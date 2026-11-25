@@ -258,7 +258,7 @@
         tab: 'studio',
         category: 'thai_consonants',
         filterMode: 'all',
-        previewMode: 'real_ttf', // 'real_ttf' | 'editor_simulated'
+        previewMode: 'editor_simulated', // primary: current project Variation Engine; secondary: compiled/uploaded .TTF
         inputMode: 'finger_drawing', // 'pencil_only' | 'finger_drawing'
         varScriptTab: 'thai', // 'thai' | 'english'
         variation: {
@@ -286,21 +286,66 @@
       defaultState.activeProjectId = defaultState.projects[0].id;
 
       // Safe v1 -> v2 Data Migration (never discards existing handwriting!)
-      // IndexedDB persistence layer (HandLineFontDB) with localStorage fallback
+      // Full IndexedDB persistence layer (HandLineFontDB v2: font_sets + meta) with localStorage fallback
       const IDB_NAME = 'HandLineFontDB';
-      function saveToIndexedDB(projects) {
-        try {
-          if (!window.indexedDB) return;
-          const req = indexedDB.open(IDB_NAME, 1);
+      const IDB_VER = 2;
+
+      function openHandLineDB() {
+        return new Promise((resolve, reject) => {
+          if (!window.indexedDB) return reject(new Error('IndexedDB unavailable'));
+          const timer = setTimeout(() => reject(new Error('IndexedDB open timeout')), 1200);
+          const req = indexedDB.open(IDB_NAME, IDB_VER);
           req.onupgradeneeded = () => {
-            if (!req.result.objectStoreNames.contains('font_sets')) req.result.createObjectStore('font_sets', { keyPath: 'id' });
+            const db = req.result;
+            if (!db.objectStoreNames.contains('font_sets')) db.createObjectStore('font_sets', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
           };
-          req.onsuccess = () => {
-            const tx = req.result.transaction('font_sets', 'readwrite');
-            const store = tx.objectStore('font_sets');
-            projects.forEach(p => store.put(p));
-          };
-        } catch (e) { /* IndexedDB optional fallback */ }
+          req.onsuccess = () => { clearTimeout(timer); resolve(req.result); };
+          req.onerror = () => { clearTimeout(timer); reject(req.error); };
+        });
+      }
+
+      function saveToIndexedDB(projects, currentState) {
+        openHandLineDB().then(db => {
+          const tx = db.transaction(['font_sets', 'meta'], 'readwrite');
+          const store = tx.objectStore('font_sets');
+          projects.forEach(p => store.put(p));
+          if (currentState) {
+            tx.objectStore('meta').put({
+              key: 'app_settings',
+              activeProjectId: currentState.activeProjectId,
+              variation: currentState.variation,
+              inputMode: currentState.inputMode,
+              guides: currentState.guides,
+              lang: currentState.lang,
+              previewText: currentState.previewText,
+              previewSize: currentState.previewSize,
+              previewLineHeight: currentState.previewLineHeight,
+              previewSpacing: currentState.previewSpacing,
+              cellWidth: currentState.cellWidth
+            });
+          }
+        }).catch(() => { /* fallback handled by localStorage */ });
+      }
+
+      async function loadFromIndexedDB() {
+        try {
+          const db = await openHandLineDB();
+          const tx = db.transaction(['font_sets', 'meta'], 'readonly');
+          const projects = await new Promise((res, rej) => {
+            const r = tx.objectStore('font_sets').getAll();
+            r.onsuccess = () => res(r.result || []);
+            r.onerror = () => rej(r.error);
+          });
+          const meta = await new Promise((res) => {
+            const r = tx.objectStore('meta').get('app_settings');
+            r.onsuccess = () => res(r.result || null);
+            r.onerror = () => res(null);
+          });
+          return { projects, meta };
+        } catch (e) {
+          return { projects: [], meta: null };
+        }
       }
 
       function ensureGlyphInstances(g) {
@@ -373,7 +418,7 @@
       const redoStacks = {};
 
       function saveState() {
-        saveToIndexedDB(state.projects);
+        saveToIndexedDB(state.projects, state);
         try {
           localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(state));
         } catch (e) {
@@ -465,9 +510,32 @@
         };
         Object.entries(samples).forEach(([cpStr, item]) => {
           const cp = Number(cpStr);
+          // Create 2 distinct handwritten instances (subtle natural stroke variation) without overwriting user's own samples
+          const altStrokes = item.strokes.map(st => ({
+            id: st.id + '_alt1',
+            width: Number((st.width * 1.08).toFixed(2)),
+            points: st.points.map((pt, idx) => ({
+              x: Number((pt.x + (idx % 2 === 0 ? 2.4 : -1.8)).toFixed(2)),
+              y: Number((pt.y + (idx % 2 === 0 ? -1.4 : 1.6)).toFixed(2)),
+              pressure: pt.pressure
+            }))
+          }));
+          const existing = proj.glyphs[cp];
+          const existingValid = existing && Array.isArray(existing.instances)
+            ? existing.instances.filter(it => it.strokes && it.strokes.length > 0)
+            : [];
+          const instances = existingValid.length >= 2
+            ? existingValid
+            : [
+                { id: 'inst_s1_' + cp, strokes: item.strokes, createdAt: new Date().toISOString(), metadata: { source: 'sample' } },
+                { id: 'inst_s2_' + cp, strokes: altStrokes, createdAt: new Date().toISOString(), metadata: { source: 'sample' } }
+              ];
           proj.glyphs[cp] = {
             codepoint: cp, character: item.char, category: item.cat,
-            canvasWidth: w, canvasHeight: h, strokes: item.strokes,
+            canvasWidth: w, canvasHeight: h,
+            strokes: instances[0].strokes,
+            instances,
+            activeInstanceIdx: 0,
             isCompleted: true, updatedAt: new Date().toISOString()
           };
         });
@@ -874,65 +942,287 @@
         updateCardChrome();
       }
 
-      // Optional Simulated Editor Stroke Preview (clearly labeled as simulated)
+      // --- Real Deterministic Handwriting Variation Engine (Mulberry32 Seeded) ---
+      function createSeededRng(seed) {
+        let a = (Number(seed) || 1) >>> 0;
+        return () => {
+          a = (a + 0x6D2B79F5) >>> 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function getValidInstances(glyph) {
+        if (!glyph) return [];
+        if (Array.isArray(glyph.instances) && glyph.instances.length > 0) {
+          const valid = glyph.instances.filter(inst => inst && Array.isArray(inst.strokes) && inst.strokes.length > 0);
+          if (valid.length > 0) return valid;
+        }
+        if (Array.isArray(glyph.strokes) && glyph.strokes.length > 0) {
+          return [{ id: 'primary_' + glyph.codepoint, strokes: glyph.strokes }];
+        }
+        return [];
+      }
+
+      function computePreviewLayout(text, proj, variation, fontSize, lineHeight, baseTracking, guides, maxWidth) {
+        const rng = createSeededRng(variation.seed);
+        const lastChosenByCp = {};
+        const padX = 28;
+        const lineStep = fontSize * lineHeight;
+        let cursorX = padX;
+        let baselineY = padX + fontSize * 1.15;
+        let activeBase = null;
+        const items = [];
+        const chars = Array.from(text);
+
+        for (let i = 0; i < chars.length; i++) {
+          const ch = chars[i];
+          if (ch === '\n') {
+            cursorX = padX;
+            baselineY += lineStep;
+            activeBase = null;
+            items.push({ type: 'newline', char: '\n', index: i });
+            continue;
+          }
+
+          const cp = ch.codePointAt(0);
+          const isThai = cp >= 0x0E00 && cp <= 0x0E7F;
+          const script = isThai ? 'thai' : 'english';
+          const cfg = isThai ? variation.thai : variation.english;
+          const intensity = Math.max(0, Math.min(100, Number(cfg.intensity) || 0)) / 100;
+
+          if (ch === ' ') {
+            // Word spacing applies ONLY to actual whitespace characters, independent of charSpacing!
+            const wsCfg = (activeBase && activeBase.isThai) ? variation.thai : variation.english;
+            const wsInt = Math.max(0, Math.min(100, Number(wsCfg.intensity) || 0)) / 100;
+            const wsPct = Math.max(0, Math.min(50, Number(wsCfg.wordSpacing) || 0)) / 100;
+            const baseSpace = fontSize * 0.36;
+            const wordDelta = wsInt === 0 ? 0 : (rng() * 2 - 1) * wsPct * baseSpace * wsInt;
+            const advance = Math.max(fontSize * 0.14, baseSpace + wordDelta + baseTracking);
+            items.push({
+              type: 'space', char: ' ', index: i, x: cursorX, y: baselineY,
+              advance: Number(advance.toFixed(2)), wordDelta: Number(wordDelta.toFixed(2))
+            });
+            cursorX += advance;
+            activeBase = null;
+            continue;
+          }
+
+          const isAbove = ABOVE_VOWELS.has(cp);
+          const isTone = TONE_MARKS.has(cp);
+          const isBelow = BELOW_MARKS.has(cp);
+          const isCombining = isAbove || isTone || isBelow;
+
+          const glyph = proj.glyphs[cp];
+          const validInsts = getValidInstances(glyph);
+
+          // Real Glyph Instance Selection (ignores empty instances; primary at 0%; avoids consecutive repeat when >=2)
+          let chosenIdx = 0;
+          if (validInsts.length > 1 && intensity > 0) {
+            const prev = lastChosenByCp[cp];
+            const shouldVary = intensity >= 0.99 || rng() < intensity;
+            if (shouldVary) {
+              const candidates = [];
+              for (let k = 0; k < validInsts.length; k++) {
+                if (k !== prev) candidates.push(k);
+              }
+              chosenIdx = candidates[Math.floor(rng() * candidates.length)];
+            } else {
+              chosenIdx = 0;
+            }
+          }
+          lastChosenByCp[cp] = chosenIdx;
+          const selectedInst = validInsts.length > 0 ? validInsts[chosenIdx] : null;
+
+          if (isCombining && activeBase) {
+            // Thai combining mark inherits base scale, slant, and vertical offset — NEVER detaches or gets spacing!
+            const isToneStacked = isTone && activeBase.hasUpperMark;
+            if (isAbove) activeBase.hasUpperMark = true;
+            let mMinX = Infinity, mMaxX = -Infinity;
+            if (selectedInst) {
+              selectedInst.strokes.forEach(st => st.points.forEach(p => { if (p.x < mMinX) mMinX = p.x; if (p.x > mMaxX) mMaxX = p.x; }));
+            }
+            items.push({
+              type: 'glyph', char: ch, codepoint: cp, index: i, script, isCombining: true,
+              validInstanceCount: validInsts.length,
+              instanceIndex: chosenIdx,
+              instanceId: selectedInst ? selectedInst.id : null,
+              strokes: selectedInst ? selectedInst.strokes : null,
+              canvasWidth: (glyph && glyph.canvasWidth) || 96,
+              canvasHeight: (glyph && glyph.canvasHeight) || 120,
+              minX: isFinite(mMinX) ? mMinX : 0,
+              maxX: isFinite(mMaxX) ? mMaxX : 50,
+              scaleFactor: activeBase.scaleFactor,
+              slantDeg: activeBase.slantDeg,
+              baselineY: activeBase.baselineY,
+              baseCenterX: activeBase.xCenter,
+              baseCp: activeBase.cp,
+              stackAboveVowel: isToneStacked,
+              charSpaceDelta: 0,
+              charSpaceAfter: 0,
+              attachedBaseIndex: activeBase.index
+            });
+            continue;
+          }
+
+          // Per-glyph size variation (seeded, bounded, baseline-consistent)
+          const sizePct = Math.max(0, Math.min(50, Number(cfg.sizeVariation) || 0)) / 100;
+          const scaleFactor = intensity === 0
+            ? 1.0
+            : Number(Math.max(0.65, Math.min(1.45, 1 + (rng() * 2 - 1) * sizePct * intensity)).toFixed(4));
+
+          // Per-glyph slant (explicit base slant + subtle seeded jitter scaled by intensity)
+          const baseSlant = Math.max(-25, Math.min(25, Number(cfg.slantAngle) || 0));
+          const slantJitter = intensity === 0 ? 0 : (rng() * 2 - 1) * 3.5 * intensity;
+          const slantDeg = Number(Math.max(-25, Math.min(25, baseSlant + slantJitter)).toFixed(2));
+
+          const baselineJitterPx = intensity === 0 ? 0 : Number(((rng() * 2 - 1) * fontSize * 0.03 * intensity).toFixed(2));
+
+          // Independent Character Spacing variation (applies between character clusters, never inside Thai mark clusters)
+          const charSpacePct = Math.max(0, Math.min(50, Number(cfg.charSpacing) || 0)) / 100;
+          const charSpaceDelta = intensity === 0 ? 0 : (rng() * 2 - 1) * charSpacePct * (fontSize * 0.28) * intensity;
+          const charSpaceAfter = Number((fontSize * 0.12 + baseTracking + charSpaceDelta).toFixed(2));
+
+          const chCanvas = (glyph && glyph.canvasHeight) || 120;
+          const span = Math.max(chCanvas * (guides.baseline - guides.ascender), 1);
+          const scale = (fontSize * scaleFactor) / span;
+          let minX = Infinity, maxX = -Infinity;
+          if (selectedInst) {
+            selectedInst.strokes.forEach(st => st.points.forEach(p => {
+              if (p.x < minX) minX = p.x;
+              if (p.x > maxX) maxX = p.x;
+            }));
+          }
+          const glyphW = (selectedInst && isFinite(minX))
+            ? Math.max((maxX - minX) * scale, fontSize * 0.22 * scaleFactor)
+            : fontSize * 0.56 * scaleFactor;
+
+          if (cursorX + glyphW > maxWidth - padX && cursorX > padX) {
+            cursorX = padX;
+            baselineY += lineStep;
+          }
+
+          const x = Number(cursorX.toFixed(2));
+          const y = Number((baselineY + baselineJitterPx).toFixed(2));
+          items.push({
+            type: 'glyph', char: ch, codepoint: cp, index: i, script, isCombining: false,
+            validInstanceCount: validInsts.length,
+            instanceIndex: chosenIdx,
+            instanceId: selectedInst ? selectedInst.id : null,
+            strokes: selectedInst ? selectedInst.strokes : null,
+            canvasWidth: (glyph && glyph.canvasWidth) || 96,
+            canvasHeight: chCanvas,
+            minX: isFinite(minX) ? minX : 0,
+            maxX: isFinite(maxX) ? maxX : 50,
+            glyphW: Number(glyphW.toFixed(2)),
+            x,
+            baselineY: y,
+            scaleFactor,
+            slantDeg,
+            charSpaceDelta: Number(charSpaceDelta.toFixed(2)),
+            charSpaceAfter,
+            attachedBaseIndex: null
+          });
+
+          activeBase = {
+            index: i,
+            xCenter: x + glyphW * 0.5,
+            baselineY: y,
+            scaleFactor,
+            slantDeg,
+            cp,
+            isThai,
+            hasUpperMark: false
+          };
+          cursorX += glyphW + Math.max(-fontSize * 0.06, charSpaceAfter);
+        }
+        return items;
+      }
+
+      // Live HandLine Variation Preview (Current Project's Actual Multi-Instance Handwriting)
       function renderEditorSimulatedPreview(canvas, text, fontSize, lineHeight, letterSpacing) {
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) return null;
         const proj = getActiveProject();
         const dpr = window.devicePixelRatio || 1;
-        const width = canvas.clientWidth || 720, height = 260;
+        const width = canvas.clientWidth || 720, height = 280;
         canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
         ctx.save(); ctx.scale(dpr, dpr);
         ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, width, height);
 
-        const padX = 28, lineStep = fontSize * lineHeight;
-        let cursorX = padX, baselineY = padX + fontSize * 1.15, lastBaseCenterX = cursorX, lastBaseCp = 0, hasUpperMark = false;
+        const layout = computePreviewLayout(text, proj, state.variation, fontSize, lineHeight, letterSpacing, state.guides, width);
 
-        for (const ch of Array.from(text)) {
-          if (ch === '\n') { cursorX = padX; baselineY += lineStep; hasUpperMark = false; continue; }
-          if (ch === ' ') { cursorX += fontSize * 0.36 + letterSpacing; hasUpperMark = false; continue; }
-          const cp = ch.codePointAt(0);
-          const glyph = proj.glyphs[cp];
-          const isAbove = ABOVE_VOWELS.has(cp), isTone = TONE_MARKS.has(cp), isBelow = BELOW_MARKS.has(cp);
-          const isComb = isAbove || isTone || isBelow;
-          if (!isComb && cursorX > width - padX - fontSize) { cursorX = padX; baselineY += lineStep; hasUpperMark = false; }
+        for (const item of layout) {
+          if (item.type !== 'glyph') continue;
+          const span = Math.max(item.canvasHeight * (state.guides.baseline - state.guides.ascender), 1);
+          const scale = (fontSize * item.scaleFactor) / span;
+          const shear = Math.tan((item.slantDeg * Math.PI) / 180);
 
-          if (glyph && glyph.strokes && glyph.strokes.length > 0) {
-            const scale = fontSize / Math.max(glyph.canvasHeight * (state.guides.baseline - state.guides.ascender), 1);
-            let minX = Infinity, maxX = -Infinity;
-            glyph.strokes.forEach(s => s.points.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; }));
-            const glyphW = Math.max((maxX - minX) * scale, fontSize * 0.22);
-            let offsetX = cursorX - minX * scale;
-            let offsetY = baselineY - glyph.canvasHeight * state.guides.baseline * scale;
-            if (isComb) {
-              const markCenter = ((minX + maxX) / 2) * scale;
-              offsetX = lastBaseCenterX - markCenter + (TALL_ASCENDERS.has(lastBaseCp) ? -fontSize * 0.14 : 0);
-              if (isTone && hasUpperMark) offsetY -= fontSize * 0.24;
-              if (isAbove) hasUpperMark = true;
+          if (item.strokes && item.strokes.length > 0) {
+            let offsetX, offsetY;
+            let pivotX, pivotY;
+            if (item.isCombining) {
+              const markCenter = ((item.minX + item.maxX) / 2) * scale;
+              const tallShift = TALL_ASCENDERS.has(item.baseCp) ? -fontSize * item.scaleFactor * 0.14 : 0;
+              offsetX = item.baseCenterX - markCenter + tallShift;
+              offsetY = item.baselineY - item.canvasHeight * state.guides.baseline * scale;
+              if (item.stackAboveVowel) offsetY -= fontSize * item.scaleFactor * 0.24;
+              pivotX = item.baseCenterX;
+              pivotY = item.baselineY;
             } else {
-              lastBaseCenterX = cursorX + glyphW * 0.5; lastBaseCp = cp; hasUpperMark = false;
+              offsetX = item.x - item.minX * scale;
+              offsetY = item.baselineY - item.canvasHeight * state.guides.baseline * scale;
+              pivotX = item.x + item.glyphW * 0.5;
+              pivotY = item.baselineY;
             }
-            ctx.strokeStyle = '#1D1D1F'; ctx.fillStyle = '#1D1D1F'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            for (const s of glyph.strokes) {
-              const pts = s.points;
-              for (let i = 1; i < pts.length; i++) {
-                ctx.lineWidth = Math.max(1.2, s.width * scale * (0.65 + 0.7 * ((pts[i-1].pressure + pts[i].pressure) / 2)));
-                ctx.beginPath(); ctx.moveTo(offsetX + pts[i-1].x * scale, offsetY + pts[i-1].y * scale);
-                ctx.lineTo(offsetX + pts[i].x * scale, offsetY + pts[i].y * scale); ctx.stroke();
+
+            // Apply real geometric slant shear anchored at the base glyph's baseline so Thai marks stay locked!
+            ctx.save();
+            ctx.translate(pivotX, pivotY);
+            if (Math.abs(shear) > 1e-4) ctx.transform(1, 0, -shear, 1, 0, 0);
+            ctx.translate(-pivotX, -pivotY);
+
+            ctx.strokeStyle = '#1D1D1F';
+            ctx.fillStyle = '#1D1D1F';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            for (const st of item.strokes) {
+              const pts = st.points;
+              if (!pts || !pts.length) continue;
+              if (pts.length === 1) {
+                ctx.beginPath();
+                ctx.arc(offsetX + pts[0].x * scale, offsetY + pts[0].y * scale, Math.max(1, st.width * scale * 0.5), 0, Math.PI * 2);
+                ctx.fill();
+                continue;
+              }
+              for (let k = 1; k < pts.length; k++) {
+                const p0 = pts[k - 1], p1 = pts[k];
+                ctx.lineWidth = Math.max(1.1, st.width * scale * (0.65 + 0.7 * ((p0.pressure + p1.pressure) / 2)));
+                ctx.beginPath();
+                ctx.moveTo(offsetX + p0.x * scale, offsetY + p0.y * scale);
+                ctx.lineTo(offsetX + p1.x * scale, offsetY + p1.y * scale);
+                ctx.stroke();
               }
             }
-            if (!isComb) cursorX += glyphW + fontSize * 0.14 + letterSpacing;
+            ctx.restore();
           } else {
+            // Unwritten character fallback rendered with exact same variation scale & slant
             ctx.save();
-            ctx.fillStyle = '#C7C7CC'; ctx.font = `400 ${fontSize}px "Noto Sans Thai", "Inter", sans-serif`;
-            ctx.fillText(ch, isComb ? lastBaseCenterX : cursorX, baselineY);
-            const m = ctx.measureText(ch).width;
-            if (!isComb) { lastBaseCenterX = cursorX + m * 0.5; lastBaseCp = cp; hasUpperMark = false; cursorX += m + letterSpacing; }
-            else if (isAbove) hasUpperMark = true;
+            const px = item.isCombining ? item.baseCenterX : item.x;
+            const py = item.baselineY;
+            ctx.translate(px, py);
+            if (Math.abs(shear) > 1e-4) ctx.transform(1, 0, -shear, 1, 0, 0);
+            ctx.fillStyle = '#C7C7CC';
+            ctx.font = `400 ${Math.round(fontSize * item.scaleFactor)}px "Noto Sans Thai", "Inter", sans-serif`;
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(item.char, 0, 0);
             ctx.restore();
           }
         }
         ctx.restore();
+        return layout;
       }
 
       function generateFeaSnippet(proj) {
@@ -1349,11 +1639,11 @@
               <div class="flex flex-wrap items-center gap-2">
                 <button id="previewSampleBtn" type="button" class="px-3 py-1.5 rounded-xl bg-white border border-[#D2D2D7] text-xs font-medium hover:bg-[#F2F2F7]">${t('loadSamples')}</button>
                 <div class="inline-flex rounded-xl bg-white p-1 border border-[#E5E5EA] text-xs">
-                <button id="modeRealBtn" type="button" class="px-3 py-1.5 rounded-lg font-medium ${state.previewMode === 'real_ttf' ? 'bg-[#1D1D1F] text-white' : 'text-[#6E6E73]'}">
-                  ${state.lang === 'th' ? 'ฟอนต์จริง (.TTF)' : 'Real Font (.TTF)'}
-                </button>
                 <button id="modeSimBtn" type="button" class="px-3 py-1.5 rounded-lg font-medium ${state.previewMode === 'editor_simulated' ? 'bg-[#1D1D1F] text-white' : 'text-[#6E6E73]'}">
-                  ${state.lang === 'th' ? 'ลายเส้นในสตูดิโอ (จำลอง)' : 'Editor Strokes (Simulated)'}
+                  ${state.lang === 'th' ? 'ลายมือโปรเจกต์ปัจจุบัน (Variation)' : 'Current Project (Variation)'}
+                </button>
+                <button id="modeRealBtn" type="button" class="px-3 py-1.5 rounded-lg font-medium ${state.previewMode === 'real_ttf' ? 'bg-[#1D1D1F] text-white' : 'text-[#6E6E73]'}">
+                  ${state.lang === 'th' ? 'ตัวอย่าง / อัปโหลด .TTF' : 'Sample / Uploaded .TTF'}
                 </button>
                 </div>
               </div>
@@ -1403,7 +1693,7 @@
             ${state.previewMode === 'real_ttf' ? `
               <div class="rounded-2xl border border-[#E5E5EA] bg-white overflow-hidden">
                 <div class="px-4 py-2.5 border-b border-[#F2F2F7] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#6E6E73]">
-                  <span><strong>Real TrueType Rendering (@font-face):</strong> ${activeFontLabel}</span>
+                  <span><strong>Compiled Reference / Uploaded .TTF (@font-face — Not Current Unsaved Project):</strong> ${activeFontLabel}</span>
                   <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-medium">OpenType GDEF · GPOS mark/mkmk · GSUB ccmp</span>
                 </div>
                 <div id="realTtfBox" class="p-7 min-h-[240px] whitespace-pre-wrap break-words text-[#1D1D1F]" style="font-family:'${activeFontFamily}', 'Noto Sans Thai', sans-serif; font-size:${state.previewSize}px; line-height:${state.previewLineHeight}; letter-spacing:${state.previewSpacing}px;"></div>
@@ -1411,7 +1701,7 @@
             ` : `
               <div class="rounded-2xl border border-[#E5E5EA] bg-white overflow-hidden">
                 <div class="px-4 py-2.5 border-b border-[#F2F2F7] flex items-center justify-between text-[11px] text-[#6E6E73]">
-                  <span><strong>Editor Stroke Preview (Simulated — Not TTF):</strong> ${state.lang === 'th' ? 'แสดงลายเส้นที่คุณเพิ่งวาดในสตูดิโอแบบจำลอง' : 'Visual simulation of current editor strokes'}</span>
+                  <span><strong>HandLine Variation Preview (Current Project):</strong> <span id="varDiagText">${state.lang === 'th' ? 'ใช้ตัวอย่างลายมือจริงของโปรเจกต์ปัจจุบัน' : 'Rendering active project glyph instances'}</span></span>
                   <button id="downloadSpecimenBtn" type="button" class="text-[#1D1D1F] font-medium hover:underline">${state.lang === 'th' ? 'บันทึกภาพ (.PNG)' : 'Save (.PNG)'}</button>
                 </div>
                 <canvas id="thaiPreviewCanvas" class="w-full h-[260px] block"></canvas>
@@ -1434,7 +1724,18 @@
             }
           } else {
             const cv = document.getElementById('thaiPreviewCanvas');
-            if (cv) renderEditorSimulatedPreview(cv, state.previewText, state.previewSize, state.previewLineHeight, state.previewSpacing);
+            if (cv) {
+              const layout = renderEditorSimulatedPreview(cv, state.previewText, state.previewSize, state.previewLineHeight, state.previewSpacing);
+              const diag = document.getElementById('varDiagText');
+              if (diag && layout) {
+                const glyphs = layout.filter(it => it.type === 'glyph');
+                const altUsed = glyphs.filter(it => it.instanceIndex > 0).length;
+                const scales = glyphs.map(it => it.scaleFactor);
+                const minS = scales.length ? Math.min(...scales).toFixed(2) : '1.00';
+                const maxS = scales.length ? Math.max(...scales).toFixed(2) : '1.00';
+                diag.textContent = `Seed ${state.variation.seed} · Alternates selected: ${altUsed}/${glyphs.length} · Scale ${minS}x–${maxS}x`;
+              }
+            }
           }
         };
         syncRender();
@@ -1449,7 +1750,14 @@
         document.getElementById('varTabThai').addEventListener('click', () => { state.varScriptTab = 'thai'; renderAll(); });
         document.getElementById('varTabEng').addEventListener('click', () => { state.varScriptTab = 'english'; renderAll(); });
         document.getElementById('varSeedInput').addEventListener('input', (e) => { state.variation.seed = Number(e.target.value) || 1; saveState(); syncRender(); });
-        document.getElementById('varRandomBtn').addEventListener('click', () => { state.variation.seed = Math.floor(Math.random() * 90000000) + 10000000; saveState(); renderAll(); });
+        document.getElementById('varRandomBtn').addEventListener('click', () => {
+          const nextSeed = Math.floor(Math.random() * 90000000) + 10000000;
+          state.variation.seed = nextSeed;
+          const seedEl = document.getElementById('varSeedInput');
+          if (seedEl) seedEl.value = String(nextSeed);
+          saveState();
+          syncRender();
+        });
         document.getElementById('varResetBtn').addEventListener('click', () => {
           state.variation[state.varScriptTab] = { intensity: 0, sizeVariation: 0, slantAngle: 0, charSpacing: 0, wordSpacing: 0 };
           saveState(); renderAll();
@@ -1643,7 +1951,33 @@
       document.getElementById('closeSidebarBtn').addEventListener('click', closeMobileSidebar);
       document.getElementById('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
 
-      renderAll();
+      async function bootstrapApp() {
+        const idb = await loadFromIndexedDB();
+        if (idb.projects && idb.projects.length > 0) {
+          const byId = new Map(state.projects.map(p => [p.id, p]));
+          idb.projects.forEach(p => {
+            const mig = migrateProject(p);
+            const cur = byId.get(mig.id);
+            if (!cur || new Date(mig.updatedAt || 0) >= new Date(cur.updatedAt || 0)) {
+              byId.set(mig.id, mig);
+            }
+          });
+          state.projects = Array.from(byId.values());
+          if (!state.projects.some(p => p.id === state.activeProjectId)) {
+            state.activeProjectId = state.projects[0].id;
+          }
+        }
+        if (idb.meta) {
+          if (idb.meta.variation) state.variation = { ...state.variation, ...idb.meta.variation };
+          if (idb.meta.inputMode) state.inputMode = idb.meta.inputMode;
+          if (idb.meta.guides) state.guides = { ...state.guides, ...idb.meta.guides };
+          if (idb.meta.activeProjectId && state.projects.some(p => p.id === idb.meta.activeProjectId)) {
+            state.activeProjectId = idb.meta.activeProjectId;
+          }
+        }
+        renderAll();
+      }
+      bootstrapApp();
     })();
   </script>
 </body>
