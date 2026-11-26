@@ -919,11 +919,25 @@
           updateCardChrome();
         });
 
+        const cycleInstBtn = card.querySelector('[data-cycle-inst]');
         const addInstBtn = card.querySelector('[data-add-inst]');
+        const gRec = proj.glyphs[spec.codepoint];
+        const instCount = gRec && Array.isArray(gRec.instances) ? gRec.instances.length : 1;
+        if (cycleInstBtn && instCount > 1) {
+          cycleInstBtn.classList.remove('hidden');
+          cycleInstBtn.textContent = `${(gRec.activeInstanceIdx || 0) + 1}/${instCount}`;
+          cycleInstBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const list = ensureGlyphInstances(gRec);
+            const nextIdx = ((gRec.activeInstanceIdx || 0) + 1) % list.length;
+            gRec.activeInstanceIdx = nextIdx;
+            gRec.strokes = list[nextIdx].strokes || [];
+            saveState();
+            renderAll();
+          });
+        }
         if (addInstBtn) {
-          const gRec = proj.glyphs[spec.codepoint];
-          const instCount = gRec && Array.isArray(gRec.instances) ? gRec.instances.length : 1;
-          addInstBtn.textContent = instCount > 1 ? `${(gRec.activeInstanceIdx || 0) + 1}/${instCount}+` : '+1';
+          addInstBtn.textContent = '+1';
           addInstBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const cur = proj.glyphs[spec.codepoint] || { codepoint: spec.codepoint, character: spec.char, category: spec.category, canvasWidth: w, canvasHeight: h, strokes: [] };
@@ -935,7 +949,7 @@
             proj.glyphs[spec.codepoint] = cur;
             saveState();
             renderAll();
-            showToast(`Added sample #${list.length} for ${spec.char} (existing samples preserved)`);
+            showToast(state.lang === 'th' ? `เพิ่มตัวอย่างที่ ${list.length} ของ "${spec.char}" แล้ว (ของเดิมยังอยู่ครบ)` : `Added sample #${list.length} for ${spec.char}`);
           });
         }
         drawCellCanvas(canvas, spec, getStrokes(), w, h);
@@ -1353,6 +1367,7 @@
                   <p class="text-xs text-[#6E6E73] mt-0.5">${p.familyName} · ${p.styleName} · v${p.version}</p>
                 </div>
                 <div class="flex items-center gap-1">
+                  <button type="button" data-rename="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:bg-[#F2F2F7]" title="Rename"><i data-lucide="pencil" class="w-4 h-4"></i></button>
                   <button type="button" data-snap="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:bg-[#F2F2F7]" title="Save Snapshot"><i data-lucide="history" class="w-4 h-4"></i></button>
                   <button type="button" data-dup="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:bg-[#F2F2F7]" title="Duplicate"><i data-lucide="copy" class="w-4 h-4"></i></button>
                   ${state.projects.length > 1 ? `<button type="button" data-del="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:text-red-600 hover:bg-[#F2F2F7]" title="Delete"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
@@ -1457,6 +1472,26 @@
           saveState();
           renderAll();
           showToast(state.lang === 'th' ? `กู้คืน ${ver.label} แล้ว` : `Restored ${ver.label}`);
+        }));
+        main.querySelectorAll('[data-rename]').forEach(btn => btn.addEventListener('click', () => {
+          const target = state.projects.find(p => p.id === btn.getAttribute('data-rename'));
+          if (!target) return;
+          const overlay = document.getElementById('modalOverlay');
+          const card = document.getElementById('modalCard');
+          card.innerHTML = `
+            <h3 class="text-base font-semibold">${state.lang === 'th' ? 'เปลี่ยนชื่อชุดฟอนต์' : 'Rename Font Set'}</h3>
+            <input id="renameInput" type="text" value="${target.name}" class="mt-3 w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" />
+            <div class="mt-4 flex justify-end gap-2">
+              <button id="cancelRenBtn" type="button" class="px-3.5 py-2 rounded-xl border border-[#D2D2D7] text-xs">${state.lang === 'th' ? 'ยกเลิก' : 'Cancel'}</button>
+              <button id="saveRenBtn" type="button" class="px-4 py-2 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium">${state.lang === 'th' ? 'บันทึก' : 'Save'}</button>
+            </div>`;
+          overlay.classList.remove('hidden');
+          document.getElementById('cancelRenBtn').addEventListener('click', () => overlay.classList.add('hidden'));
+          document.getElementById('saveRenBtn').addEventListener('click', () => {
+            const val = document.getElementById('renameInput').value.trim();
+            if (val) { target.name = val; target.updatedAt = new Date().toISOString(); saveState(); renderAll(); }
+            overlay.classList.add('hidden');
+          });
         }));
         main.querySelectorAll('[data-dup]').forEach(btn => btn.addEventListener('click', () => {
           const src = state.projects.find(p => p.id === btn.getAttribute('data-dup'));
@@ -1589,6 +1624,7 @@
                   <span class="text-[10px] font-mono text-[#8E8E93]">${spec.codepoint.toString(16).toUpperCase().padStart(4, '0')}</span>
                 </div>
                 <div class="flex items-center gap-1">
+                  <button type="button" data-cycle-inst title="Switch handwriting sample" class="hidden px-1.5 py-0.5 rounded-md bg-[#ECECF0] hover:bg-[#D2D2D7] text-[10px] font-mono">1/1</button>
                   <button type="button" data-add-inst title="Add another handwriting sample" class="px-1.5 py-0.5 rounded-md bg-[#F2F2F7] hover:bg-[#1D1D1F] hover:text-white text-[10px] font-mono">+1</button>
                   <span data-badge class="w-2 h-2 rounded-full bg-[#E5E5EA]"></span>
                 </div>
@@ -1833,6 +1869,7 @@
                 <label class="space-y-1"><span class="text-[#6E6E73]">Designer</span><input id="expDesigner" type="text" value="${proj.designer}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
                 <label class="space-y-1"><span class="text-[#6E6E73]">Version</span><input id="expVersion" type="text" value="${proj.version}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
                 <label class="space-y-1 sm:col-span-2"><span class="text-[#6E6E73]">Copyright</span><input id="expCopy" type="text" value="${proj.copyrightText || ''}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
+                <label class="space-y-1 sm:col-span-2"><span class="text-[#6E6E73]">Geometric Slant (${proj.slantAngle || 0}°, แยกจาก Italic Style)</span><input id="expSlant" type="range" min="-25" max="25" value="${proj.slantAngle || 0}" class="w-full" /></label>
               </div>
 
               <div class="p-4 rounded-xl bg-[#F5F5F7] text-xs space-y-1.5">
@@ -1863,6 +1900,11 @@
           </div>
         `;
 
+        document.getElementById('expSlant').addEventListener('input', (e) => {
+          proj.slantAngle = Number(e.target.value);
+          e.target.previousElementSibling.textContent = `Geometric Slant (${proj.slantAngle}°, แยกจาก Italic Style)`;
+          saveState();
+        });
         ['expFamily','expStyle','expFull','expPs','expDesigner','expVersion','expCopy'].forEach(id => {
           document.getElementById(id).addEventListener('input', () => {
             proj.familyName = document.getElementById('expFamily').value;
