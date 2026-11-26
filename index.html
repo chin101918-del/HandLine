@@ -259,6 +259,7 @@
         category: 'thai_consonants',
         filterMode: 'all',
         previewMode: 'editor_simulated', // primary: current project Variation Engine; secondary: compiled/uploaded .TTF
+        mixProjectIds: [], // additional drawn projects included for cross-project character variation
         inputMode: 'finger_drawing', // 'pencil_only' | 'finger_drawing'
         varScriptTab: 'thai', // 'thai' | 'english'
         variation: {
@@ -979,7 +980,33 @@
         return [];
       }
 
-      function computePreviewLayout(text, proj, variation, fontSize, lineHeight, baseTracking, guides, maxWidth) {
+      function getPreviewSourceProjects(primaryProj) {
+        const selectedIds = new Set(Array.isArray(state.mixProjectIds) ? state.mixProjectIds : []);
+        const extras = state.projects.filter(p => p.id !== primaryProj.id && selectedIds.has(p.id));
+        return [primaryProj, ...extras];
+      }
+
+      function collectVariationInstances(cp, sourceProjects) {
+        const pool = [];
+        for (const p of sourceProjects) {
+          const glyph = p && p.glyphs ? p.glyphs[cp] : null;
+          if (!glyph) continue;
+          const valid = getValidInstances(glyph);
+          for (const inst of valid) {
+            pool.push({
+              ...inst,
+              id: `${p.id}::${inst.id}`,
+              sourceProjectId: p.id,
+              sourceProjectName: p.name,
+              canvasWidth: inst.canvasWidth || glyph.canvasWidth || 96,
+              canvasHeight: inst.canvasHeight || glyph.canvasHeight || 120
+            });
+          }
+        }
+        return pool;
+      }
+
+      function computePreviewLayout(text, proj, variation, fontSize, lineHeight, baseTracking, guides, maxWidth, extraProjects = null) {
         const rng = createSeededRng(variation.seed);
         const lastChosenByCp = {};
         const padX = 28;
@@ -1028,8 +1055,11 @@
           const isBelow = BELOW_MARKS.has(cp);
           const isCombining = isAbove || isTone || isBelow;
 
+          const sourceProjects = Array.isArray(extraProjects) && extraProjects.length > 0
+            ? [proj, ...extraProjects.filter(p => p && p.id !== proj.id)]
+            : getPreviewSourceProjects(proj);
           const glyph = proj.glyphs[cp];
-          const validInsts = getValidInstances(glyph);
+          const validInsts = collectVariationInstances(cp, sourceProjects);
 
           // Real Glyph Instance Selection (ignores empty instances; primary at 0%; avoids consecutive repeat when >=2)
           let chosenIdx = 0;
@@ -1063,8 +1093,9 @@
               instanceIndex: chosenIdx,
               instanceId: selectedInst ? selectedInst.id : null,
               strokes: selectedInst ? selectedInst.strokes : null,
-              canvasWidth: (glyph && glyph.canvasWidth) || 96,
-              canvasHeight: (glyph && glyph.canvasHeight) || 120,
+              sourceProjectId: selectedInst ? selectedInst.sourceProjectId : proj.id,
+              canvasWidth: (selectedInst && selectedInst.canvasWidth) || (glyph && glyph.canvasWidth) || 96,
+              canvasHeight: (selectedInst && selectedInst.canvasHeight) || (glyph && glyph.canvasHeight) || 120,
               minX: isFinite(mMinX) ? mMinX : 0,
               maxX: isFinite(mMaxX) ? mMaxX : 50,
               scaleFactor: activeBase.scaleFactor,
@@ -1098,7 +1129,7 @@
           const charSpaceDelta = intensity === 0 ? 0 : (rng() * 2 - 1) * charSpacePct * (fontSize * 0.28) * intensity;
           const charSpaceAfter = Number((fontSize * 0.12 + baseTracking + charSpaceDelta).toFixed(2));
 
-          const chCanvas = (glyph && glyph.canvasHeight) || 120;
+          const chCanvas = (selectedInst && selectedInst.canvasHeight) || (glyph && glyph.canvasHeight) || 120;
           const span = Math.max(chCanvas * (guides.baseline - guides.ascender), 1);
           const scale = (fontSize * scaleFactor) / span;
           let minX = Infinity, maxX = -Infinity;
@@ -1125,7 +1156,8 @@
             instanceIndex: chosenIdx,
             instanceId: selectedInst ? selectedInst.id : null,
             strokes: selectedInst ? selectedInst.strokes : null,
-            canvasWidth: (glyph && glyph.canvasWidth) || 96,
+            sourceProjectId: selectedInst ? selectedInst.sourceProjectId : proj.id,
+            canvasWidth: (selectedInst && selectedInst.canvasWidth) || (glyph && glyph.canvasWidth) || 96,
             canvasHeight: chCanvas,
             minX: isFinite(minX) ? minX : 0,
             maxX: isFinite(maxX) ? maxX : 50,
@@ -1735,9 +1767,31 @@
                 <div id="realTtfBox" class="p-7 min-h-[240px] whitespace-pre-wrap break-words text-[#1D1D1F]" style="font-family:'${activeFontFamily}', 'Noto Sans Thai', sans-serif; font-size:${state.previewSize}px; line-height:${state.previewLineHeight}; letter-spacing:${state.previewSpacing}px;"></div>
               </div>
             ` : `
+              <div class="bg-white rounded-2xl border border-[#E5E5EA] px-4 py-3 text-xs space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="font-semibold text-[#1D1D1F]">${state.lang === 'th' ? 'ผสมลายมือจากหลายโปรเจกต์ (Character Variation)' : 'Mix Drawn Projects (Character Variation)'}</span>
+                  <div class="flex items-center gap-1.5">
+                    <button id="mixAllProjBtn" type="button" class="px-2.5 py-1 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium">${state.lang === 'th' ? 'เลือกทุกโปรเจกต์' : 'Mix All'}</button>
+                    <button id="mixOnlyActiveBtn" type="button" class="px-2.5 py-1 rounded-lg border border-[#D2D2D7] hover:bg-[#F5F5F7]">${state.lang === 'th' ? 'เฉพาะโปรเจกต์นี้' : 'Active Only'}</button>
+                  </div>
+                </div>
+                <div id="mixProjectPills" class="flex flex-wrap gap-1.5">
+                  ${state.projects.map(p => {
+                    const isPrimary = p.id === getActiveProject().id;
+                    const isChecked = isPrimary || (Array.isArray(state.mixProjectIds) && state.mixProjectIds.includes(p.id));
+                    const gCount = Object.values(p.glyphs || {}).filter(g => getValidInstances(g).length > 0).length;
+                    return `<label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border cursor-pointer ${isChecked ? 'bg-[#1D1D1F] text-white border-[#1D1D1F]' : 'bg-[#F5F5F7] text-[#424245] border-[#E5E5EA]'}">
+                      <input type="checkbox" data-mix-proj="${p.id}" ${isChecked ? 'checked' : ''} ${isPrimary ? 'disabled' : ''} class="accent-white" />
+                      <span>${p.name}</span>
+                      <span class="opacity-70 text-[10px]">(${gCount})</span>
+                    </label>`;
+                  }).join('')}
+                </div>
+              </div>
+
               <div class="rounded-2xl border border-[#E5E5EA] bg-white overflow-hidden">
                 <div class="px-4 py-2.5 border-b border-[#F2F2F7] flex items-center justify-between text-[11px] text-[#6E6E73]">
-                  <span><strong>HandLine Variation Preview (Current Project):</strong> <span id="varDiagText">${state.lang === 'th' ? 'ใช้ตัวอย่างลายมือจริงของโปรเจกต์ปัจจุบัน' : 'Rendering active project glyph instances'}</span></span>
+                  <span><strong>HandLine Variation Preview:</strong> <span id="varDiagText">${state.lang === 'th' ? 'ใช้ตัวอย่างลายมือจริงของโปรเจกต์ที่เลือก' : 'Rendering active project glyph instances'}</span></span>
                   <button id="downloadSpecimenBtn" type="button" class="text-[#1D1D1F] font-medium hover:underline">${state.lang === 'th' ? 'บันทึกภาพ (.PNG)' : 'Save (.PNG)'}</button>
                 </div>
                 <canvas id="thaiPreviewCanvas" class="w-full h-[260px] block"></canvas>
@@ -1769,7 +1823,9 @@
                 const scales = glyphs.map(it => it.scaleFactor);
                 const minS = scales.length ? Math.min(...scales).toFixed(2) : '1.00';
                 const maxS = scales.length ? Math.max(...scales).toFixed(2) : '1.00';
-                diag.textContent = `Seed ${state.variation.seed} · Alternates selected: ${altUsed}/${glyphs.length} · Scale ${minS}x–${maxS}x`;
+                const usedProjs = new Set(glyphs.filter(it => it.strokes && it.sourceProjectId).map(it => it.sourceProjectId)).size;
+                const mixCount = getPreviewSourceProjects(getActiveProject()).length;
+                diag.textContent = `Seed ${state.variation.seed} · Projects: ${usedProjs}/${mixCount} · Alternates: ${altUsed}/${glyphs.length} · Scale ${minS}x–${maxS}x`;
               }
             }
           }
@@ -1812,6 +1868,26 @@
         bindVar('vSlantSlider', 'slantAngle', 'vSlantVal', '°');
         bindVar('vCharSlider', 'charSpacing', 'vCharVal', '%');
         bindVar('vWordSlider', 'wordSpacing', 'vWordVal', '%');
+        const mixAllBtn = document.getElementById('mixAllProjBtn');
+        if (mixAllBtn) mixAllBtn.addEventListener('click', () => {
+          const activeId = getActiveProject().id;
+          state.mixProjectIds = state.projects.filter(p => p.id !== activeId).map(p => p.id);
+          saveState(); renderAll();
+        });
+        const mixOnlyBtn = document.getElementById('mixOnlyActiveBtn');
+        if (mixOnlyBtn) mixOnlyBtn.addEventListener('click', () => {
+          state.mixProjectIds = [];
+          saveState(); renderAll();
+        });
+        main.querySelectorAll('[data-mix-proj]').forEach(chk => {
+          chk.addEventListener('change', (e) => {
+            const pid = chk.getAttribute('data-mix-proj');
+            const set = new Set(Array.isArray(state.mixProjectIds) ? state.mixProjectIds : []);
+            if (e.target.checked) set.add(pid); else set.delete(pid);
+            state.mixProjectIds = Array.from(set);
+            saveState(); renderAll();
+          });
+        });
         document.getElementById('modeRealBtn').addEventListener('click', () => { state.previewMode = 'real_ttf'; renderAll(); });
         document.getElementById('modeSimBtn').addEventListener('click', () => { state.previewMode = 'editor_simulated'; renderAll(); });
         document.getElementById('previewInput').addEventListener('input', (e) => { state.previewText = e.target.value; saveState(); syncRender(); });
