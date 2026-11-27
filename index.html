@@ -411,6 +411,11 @@
       defaultState.activeProjectId = defaultState.projects[0].id;
 
       // --- Supabase Auth & Cloud Persistence ---
+      const DEFAULT_SUPA_CONFIG = {
+        url: 'https://mnapprclxzbnylwjyrns.supabase.co',
+        anonKey: 'sb_publishable_PQ7f3J0CCFm5MGyiP-F5sQ_pZkMmqBM'
+      };
+
       let supabaseClient = null;
       let currentUser = null;
       let supaConfig = loadSupaConfig();
@@ -421,11 +426,6 @@
       let loadedPdfBgCanvas = null;
       let activeEditingTextboxId = null;
       let isPlacingTextbox = false;
-
-      const DEFAULT_SUPA_CONFIG = {
-        url: 'https://mnapprclxzbnylwjyrns.supabase.co',
-        anonKey: 'sb_publishable_PQ7f3J0CCFm5MGyiP-F5sQ_pZkMmqBM'
-      };
 
       function loadSupaConfig() {
         try {
@@ -2802,58 +2802,85 @@
       // --- 6. Login Page (Google OAuth via Supabase) ---
       function renderLogin(main) {
         const isConfigured = Boolean(supaConfig.url && supaConfig.anonKey);
+        const avatarUrl = currentUser?.user_metadata?.avatar_url || currentUser?.user_metadata?.picture || '';
+        const displayName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name || 'Google User';
+        const initial = (displayName || currentUser?.email || 'U').charAt(0).toUpperCase();
+
         main.innerHTML = `
-          <div class="max-w-md mx-auto space-y-6 py-4">
-            <div>
-              <h1 class="text-2xl font-semibold tracking-tight">${state.lang === 'th' ? 'บัญชีผู้ใช้ LineLux' : 'LineLux Account'}</h1>
-              <p class="text-sm text-[#6E6E73] mt-1">${state.lang === 'th' ? 'เข้าสู่ระบบด้วย Google ผ่าน Supabase เพื่อเก็บและซิงก์ฟอนต์ลายมือของคุณข้ามอุปกรณ์' : 'Sign in with Google via Supabase to sync your handwriting fonts across devices.'}</p>
+          <div class="min-h-[72vh] flex items-center justify-center py-6">
+            <div class="w-full max-w-md space-y-5">
+              ${currentUser ? `
+                <div class="bg-white rounded-3xl border border-[#E5E5EA] shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-7 space-y-6">
+                  <div class="flex items-center gap-4">
+                    ${avatarUrl
+                      ? `<img src="${avatarUrl}" alt="" referrerpolicy="no-referrer" class="w-14 h-14 rounded-full object-cover border border-[#E5E5EA]" />`
+                      : `<div class="w-14 h-14 rounded-full bg-[#1D1D1F] text-white flex items-center justify-center text-lg font-semibold">${initial}</div>`
+                    }
+                    <div class="min-w-0 flex-1">
+                      <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium mb-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        <span>${state.lang === 'th' ? 'เชื่อมต่อคลาวด์แล้ว' : 'Cloud Synced'}</span>
+                      </div>
+                      <div class="font-semibold text-base text-[#1D1D1F] truncate">${displayName}</div>
+                      <div class="text-xs text-[#6E6E73] truncate">${currentUser.email || ''}</div>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2.5 pt-1">
+                    <button id="syncNowBtn" type="button" class="px-4 py-2.5 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium hover:bg-black transition-colors">${state.lang === 'th' ? 'ซิงก์ฟอนต์ตอนนี้' : 'Sync Fonts Now'}</button>
+                    <button id="logoutBtn" type="button" class="px-4 py-2.5 rounded-xl border border-[#D2D2D7] text-[#1D1D1F] text-xs font-medium hover:bg-[#F5F5F7] transition-colors">${state.lang === 'th' ? 'ออกจากระบบ' : 'Sign Out'}</button>
+                  </div>
+                  <button id="backToStudioFromLogin" type="button" class="w-full text-center text-xs text-[#6E6E73] hover:text-[#1D1D1F] pt-1">${state.lang === 'th' ? '← กลับไปหน้าสตูดิโอ' : '← Back to Studio'}</button>
+                </div>
+              ` : `
+                <div class="bg-white rounded-3xl border border-[#E5E5EA] shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-8 space-y-6 text-center">
+                  <div class="space-y-3">
+                    <div class="w-12 h-12 rounded-2xl bg-[#1D1D1F] text-white font-semibold text-base flex items-center justify-center mx-auto shadow-sm">LL</div>
+                    <div>
+                      <h1 class="text-2xl font-semibold tracking-tight text-[#1D1D1F]">${state.lang === 'th' ? 'เข้าสู่ระบบ LineLux' : 'Sign in to LineLux'}</h1>
+                      <p class="text-xs text-[#6E6E73] mt-1.5 leading-relaxed">${state.lang === 'th' ? 'บันทึกคลังฟอนต์ลายมือและซิงก์งานของคุณข้ามอุปกรณ์ได้อย่างปลอดภัยด้วยบัญชี Google' : 'Save your handwriting font library and sync seamlessly across devices with Google.'}</p>
+                    </div>
+                  </div>
+
+                  <div class="space-y-3 pt-1">
+                    <button id="googleLoginBtn" type="button" class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white border border-[#D2D2D7] hover:border-[#1D1D1F] hover:bg-[#FAFAFC] text-[#1D1D1F] text-sm font-medium shadow-sm transition-all">
+                      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/>
+                        <path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24z"/>
+                        <path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 0 0 0 10.76l3.98-3.09z"/>
+                        <path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.69 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/>
+                      </svg>
+                      <span>${state.lang === 'th' ? 'ดำเนินการต่อด้วย Google' : 'Continue with Google'}</span>
+                    </button>
+
+                    <button id="continueGuestBtn" type="button" class="w-full py-2.5 rounded-2xl text-xs font-medium text-[#6E6E73] hover:text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors">
+                      ${state.lang === 'th' ? 'ใช้งานต่อแบบไม่ล็อกอิน (เก็บข้อมูลในเครื่อง)' : 'Continue without signing in (Local only)'}
+                    </button>
+                  </div>
+
+                  <div class="pt-2 border-t border-[#F2F2F7] text-[11px] text-[#8E8E93]">
+                    ${isConfigured
+                      ? (state.lang === 'th' ? 'เชื่อมต่อระบบบัญชีพร้อมใช้งานแล้ว' : 'Cloud authentication ready')
+                      : (state.lang === 'th' ? 'กรุณากรอกค่า Supabase ด้านล่างเพื่อเปิดใช้งาน Google Login' : 'Configure Supabase below to enable Google Login')}
+                  </div>
+                </div>
+              `}
+
+              <!-- Advanced Supabase Connection Override -->
+              <details class="bg-white/80 rounded-2xl border border-[#E5E5EA] px-4 py-3 text-xs">
+                <summary class="cursor-pointer font-medium text-[#8E8E93] hover:text-[#1D1D1F] select-none">${state.lang === 'th' ? 'ตั้งค่าการเชื่อมต่อ Supabase (เชื่อมต่อแล้ว)' : 'Supabase Connection (Connected)'}</summary>
+                <div class="pt-3 space-y-3">
+                  <label class="block space-y-1">
+                    <span class="text-[#6E6E73]">Supabase Project URL</span>
+                    <input id="supaUrlInput" type="url" value="${supaConfig.url || ''}" placeholder="https://xxxx.supabase.co" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] bg-white" />
+                  </label>
+                  <label class="block space-y-1">
+                    <span class="text-[#6E6E73]">Supabase Publishable / Anon Key</span>
+                    <input id="supaKeyInput" type="password" value="${supaConfig.anonKey || ''}" placeholder="sb_publishable_..." class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] bg-white" />
+                  </label>
+                  <button id="saveSupaCfgBtn" type="button" class="px-4 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium">${state.lang === 'th' ? 'บันทึกการตั้งค่า Supabase' : 'Save Supabase Config'}</button>
+                </div>
+              </details>
             </div>
-
-            ${currentUser ? `
-              <div class="bg-white rounded-2xl border border-[#E5E5EA] p-6 space-y-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-11 h-11 rounded-full bg-[#1D1D1F] text-white flex items-center justify-center font-semibold">
-                    ${(currentUser.user_metadata?.full_name || currentUser.email || 'U').charAt(0).toUpperCase()}
-                  </div>
-                  <div class="min-w-0">
-                    <div class="font-semibold text-sm truncate">${currentUser.user_metadata?.full_name || 'Google User'}</div>
-                    <div class="text-xs text-[#6E6E73] truncate">${currentUser.email || ''}</div>
-                  </div>
-                </div>
-                <div class="flex gap-2 pt-2">
-                  <button id="syncNowBtn" type="button" class="flex-1 px-4 py-2.5 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium">${state.lang === 'th' ? 'ซิงก์ฟอนต์ตอนนี้' : 'Sync Fonts Now'}</button>
-                  <button id="logoutBtn" type="button" class="px-4 py-2.5 rounded-xl border border-[#D2D2D7] text-xs font-medium hover:bg-[#F5F5F7]">${state.lang === 'th' ? 'ออกจากระบบ' : 'Sign Out'}</button>
-                </div>
-              </div>
-            ` : `
-              <div class="bg-white rounded-2xl border border-[#E5E5EA] p-6 space-y-4">
-                <button id="googleLoginBtn" type="button" class="w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl bg-[#1D1D1F] text-white text-sm font-medium hover:bg-black transition-colors">
-                  <span>G</span>
-                  <span>${state.lang === 'th' ? 'เข้าสู่ระบบด้วย Google' : 'Continue with Google'}</span>
-                </button>
-                <p class="text-[11px] text-[#8E8E93] text-center">
-                  ${isConfigured
-                    ? (state.lang === 'th' ? 'เชื่อมต่อ Supabase พร้อมใช้งานแล้ว' : 'Supabase configured and ready')
-                    : (state.lang === 'th' ? 'กรุณากรอก Supabase URL และ Anon Key ด้านล่างเพื่อเปิดใช้งาน Google Login' : 'Enter your Supabase URL & Anon Key below to enable Google Login')}
-                </p>
-              </div>
-            `}
-
-            <!-- Supabase Project Config (Pre-configured, collapsible for advanced override) -->
-            <details class="bg-white rounded-2xl border border-[#E5E5EA] p-4 text-xs">
-              <summary class="cursor-pointer font-medium text-[#6E6E73] select-none">${state.lang === 'th' ? 'ตั้งค่าการเชื่อมต่อ Supabase (เชื่อมต่อแล้ว)' : 'Supabase Connection (Connected)'}</summary>
-              <div class="pt-3 space-y-3">
-                <label class="block space-y-1">
-                  <span class="text-[#6E6E73]">Supabase Project URL</span>
-                  <input id="supaUrlInput" type="url" value="${supaConfig.url || ''}" placeholder="https://xxxx.supabase.co" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7]" />
-                </label>
-                <label class="block space-y-1">
-                  <span class="text-[#6E6E73]">Supabase Publishable / Anon Key</span>
-                  <input id="supaKeyInput" type="password" value="${supaConfig.anonKey || ''}" placeholder="sb_publishable_..." class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7]" />
-                </label>
-                <button id="saveSupaCfgBtn" type="button" class="px-4 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium">${state.lang === 'th' ? 'บันทึกการตั้งค่า Supabase' : 'Save Supabase Config'}</button>
-              </div>
-            </details>
           </div>
         `;
 
@@ -2861,19 +2888,33 @@
         if (gBtn) gBtn.addEventListener('click', async () => {
           const client = initSupabaseClient();
           if (!client) {
-            showToast(state.lang === 'th' ? 'กรุณาบันทึก Supabase URL และ Anon Key ก่อนเข้าสู่ระบบ' : 'Please save Supabase URL & Anon Key first');
+            showToast(state.lang === 'th' ? 'ไม่พบการเชื่อมต่อ Supabase กรุณารีเฟรชหรือตรวจสอบการตั้งค่า' : 'Supabase not configured');
             return;
           }
+          gBtn.disabled = true;
+          gBtn.classList.add('opacity-60');
           try {
             const { error } = await client.auth.signInWithOAuth({
               provider: 'google',
-              options: { redirectTo: window.location.href.split('#')[0] }
+              options: { redirectTo: window.location.origin + window.location.pathname }
             });
-            if (error) showToast(error.message);
+            if (error) {
+              gBtn.disabled = false;
+              gBtn.classList.remove('opacity-60');
+              showToast(error.message);
+            }
           } catch (err) {
+            gBtn.disabled = false;
+            gBtn.classList.remove('opacity-60');
             showToast(String(err));
           }
         });
+
+        const guestBtn = document.getElementById('continueGuestBtn');
+        if (guestBtn) guestBtn.addEventListener('click', () => { state.tab = 'preview'; renderAll(); });
+
+        const backBtn = document.getElementById('backToStudioFromLogin');
+        if (backBtn) backBtn.addEventListener('click', () => { state.tab = 'preview'; renderAll(); });
 
         const syncBtn = document.getElementById('syncNowBtn');
         if (syncBtn) syncBtn.addEventListener('click', async () => {
@@ -2906,7 +2947,6 @@
           showToast(state.lang === 'th' ? 'บันทึกการตั้งค่า Supabase แล้ว' : 'Saved Supabase config');
         });
       }
-
       // --- 7. Settings (Clean & Minimal) ---
       function renderSettings(main) {
         main.innerHTML = `
