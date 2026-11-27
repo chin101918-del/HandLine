@@ -6,7 +6,8 @@
   <title>LineLux — Handwriting Font Studio</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -44,9 +45,28 @@
     .scrollbar-thin::-webkit-scrollbar-thumb { background: #D2D2D7; border-radius: 999px; }
     .pill-hl {
       border-radius: 999px;
-      padding: 0.08em 0.42em;
+      padding: 0.06em 0.45em;
       box-decoration-break: clone;
       -webkit-box-decoration-break: clone;
+    }
+    .rich-editor:empty:before {
+      content: attr(data-placeholder);
+      color: #A1A1AA;
+      pointer-events: none;
+    }
+    .rich-editor ul { list-style-type: disc; padding-left: 1.4rem; margin: 0.2rem 0; }
+    .rich-editor ol { list-style-type: decimal; padding-left: 1.4rem; margin: 0.2rem 0; }
+    .rich-editor li { margin: 0.15rem 0; }
+      [data-tb-input]::selection,
+    [data-tb-input] *::selection {
+      color: transparent !important;
+      background: rgba(0, 113, 227, 0.16);
+    }
+    [data-tb-input]:empty::before {
+      content: attr(data-placeholder);
+      color: #A1A1AA;
+      font-size: 14px;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -59,7 +79,7 @@
       </button>
       <div class="text-sm font-semibold tracking-tight">LineLux</div>
     </div>
-    <button id="mobileLangBtn" type="button" class="text-xs px-2.5 py-1.5 rounded-lg border border-[#D2D2D7] font-medium">EN</button>
+    <button id="mobileAuthBtn" type="button" class="text-xs px-2.5 py-1.5 rounded-lg bg-[#F5F5F7] font-medium">Account</button>
   </header>
 
   <!-- Sidebar -->
@@ -81,23 +101,14 @@
       <nav id="navList" class="space-y-1"></nav>
     </div>
 
-    <div class="pt-4 border-t border-[#E5E5EA] space-y-3">
-      <!-- Compact Auth Account Chip -->
+    <div class="pt-4 border-t border-[#E5E5EA]">
       <button id="sidebarAuthBtn" type="button" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#ECECF0] transition-colors text-left">
         <div id="sidebarAvatar" class="w-7 h-7 rounded-full bg-[#1D1D1F] text-white flex items-center justify-center text-[11px] font-medium shrink-0">G</div>
         <div class="min-w-0 flex-1">
-          <div id="sidebarAuthName" class="text-xs font-medium truncate">เข้าสู่ระบบ Google</div>
-          <div id="sidebarAuthSub" class="text-[10px] text-[#8E8E93] truncate">บันทึกในเครื่อง (Local)</div>
+          <div id="sidebarAuthName" class="text-xs font-medium truncate">Account</div>
+          <div id="sidebarAuthSub" class="text-[10px] text-[#8E8E93] truncate">เข้าสู่ระบบ Google</div>
         </div>
       </button>
-
-      <div class="flex items-center justify-between px-2">
-        <span id="saveStatusText" class="text-[11px] text-[#6E6E73] flex items-center gap-1.5">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-          <span id="saveStatusLabel">บันทึกแล้ว</span>
-        </span>
-        <button id="langToggleBtn" type="button" class="text-xs px-2.5 py-1 rounded-lg border border-[#D2D2D7] hover:bg-[#F5F5F7] font-medium">EN</button>
-      </div>
     </div>
   </aside>
 
@@ -107,6 +118,20 @@
   <!-- Modal -->
   <div id="modalOverlay" class="hidden fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px] flex items-center justify-center p-4">
     <div id="modalCard" class="bg-white rounded-2xl border border-[#E5E5EA] w-full max-w-md p-6 shadow-xl max-h-[90vh] overflow-y-auto"></div>
+  </div>
+
+  <!-- Floating Selection Popover (Only Essential LineLux Tools) -->
+  <div id="selectionPopup" class="hidden fixed z-50 bg-white rounded-2xl border border-[#E5E5EA] shadow-xl p-1.5 flex flex-col gap-1.5 min-w-[200px]">
+    <div class="flex items-center gap-1">
+      <button id="popBulletBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]" title="Bullet List"><i data-lucide="list" class="w-4 h-4"></i></button>
+      <button id="popNumberBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]" title="Numbered List"><i data-lucide="list-ordered" class="w-4 h-4"></i></button>
+      <div class="h-4 w-px bg-[#E5E5EA] mx-0.5"></div>
+      <button id="popTextColToggle" type="button" class="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-[#F2F2F7] text-xs font-semibold" title="สีตัวอักษร">A</button>
+      <button id="popHlColToggle" type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[#F2F2F7] text-xs font-medium" title="ไฮไลท์"><i data-lucide="highlighter" class="w-3.5 h-3.5"></i></button>
+      <button id="popClearHlBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1D1D1F]" title="ล้างไฮไลท์"><i data-lucide="eraser" class="w-3.5 h-3.5"></i></button>
+    </div>
+    <div id="popTextColRow" class="hidden pt-1.5 border-t border-[#F2F2F7] flex flex-wrap gap-1.5 px-1"></div>
+    <div id="popHlColRow" class="hidden pt-1.5 border-t border-[#F2F2F7] flex flex-wrap gap-1.5 px-1"></div>
   </div>
 
   <!-- Toast -->
@@ -141,7 +166,7 @@
         ...buildSpecs(['๐','๑','๒','๓','๔','๕','๖','๗','๘','๙','ฯ','ๆ','฿','๏','๚','๛'], 'thai_digits'),
         ...buildSpecs('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), 'latin_upper'),
         ...buildSpecs('abcdefghijklmnopqrstuvwxyz'.split(''), 'latin_lower'),
-        ...buildSpecs('0123456789.,!?;:-–—()[]{}"\'/@#$%&*+=_~'.split(''), 'digits_punct')
+        ...buildSpecs('0123456789•→.,!?;:-–—()[]{}"\'/@#$%&*+=_~'.split(''), 'digits_punct')
       ];
 
       const CATEGORIES = [
@@ -157,15 +182,162 @@
       const NAV_ITEMS = [
         { id: 'dashboard', icon: 'layout-dashboard', th: 'แดชบอร์ด', en: 'Dashboard' },
         { id: 'my-fonts', icon: 'folder-open', th: 'คลังฟอนต์', en: 'Font Library' },
-        { id: 'studio', icon: 'pen-tool', th: 'Writing Studio', en: 'Writing Studio' },
-        { id: 'preview', icon: 'eye', th: 'แสดงตัวอย่าง', en: 'Preview' },
-        { id: 'export', icon: 'download', th: 'ส่งออก (.TTF)', en: 'Export' },
-        { id: 'login', icon: 'user', th: 'บัญชี / Login', en: 'Account / Login' },
+        { id: 'preview', icon: 'pen-tool', th: 'สตูดิโอ', en: 'Studio' },
         { id: 'settings', icon: 'settings', th: 'ตั้งค่า', en: 'Settings' }
       ];
 
-      const TEXT_COLORS = ['#1D1D1F', '#1E3A8A', '#14532D', '#881337', '#5C4033', '#4B5563'];
-      const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BAE6FD', '#FBCFE8', '#FED7AA'];
+      const PALETTE_TEXT_COLORS = [
+        { name: 'Default', hex: '#1D1D1F' },
+        { name: 'Gray', hex: '#787774' },
+        { name: 'Brown', hex: '#9F6B53' },
+        { name: 'Orange', hex: '#D9730D' },
+        { name: 'Yellow', hex: '#CB912F' },
+        { name: 'Green', hex: '#448361' },
+        { name: 'Blue', hex: '#337EA9' },
+        { name: 'Purple', hex: '#9065B0' },
+        { name: 'Pink', hex: '#C14C8A' },
+        { name: 'Red', hex: '#D44C47' }
+      ];
+      const PALETTE_HL_COLORS = [
+        { name: 'Yellow', hex: '#FEF08A' },
+        { name: 'Gray', hex: '#E8E8E6' },
+        { name: 'Brown', hex: '#EFE3DC' },
+        { name: 'Orange', hex: '#FED7AA' },
+        { name: 'Green', hex: '#BBF7D0' },
+        { name: 'Blue', hex: '#BAE6FD' },
+        { name: 'Purple', hex: '#E9D5FF' },
+        { name: 'Pink', hex: '#FBCFE8' },
+        { name: 'Red', hex: '#FECACA' }
+      ];
+
+      // Sleek Integrated Apple-style Color Picker (replaces clunky native OS <input type="color"> popup)
+      function hexToHsv(hex) {
+        let c = (hex || '#1D1D1F').replace('#', '').trim();
+        if (c.length === 3) c = c.split('').map(x => x + x).join('');
+        if (!/^[0-9a-fA-F]{6}$/.test(c)) c = '1D1D1F';
+        const r = parseInt(c.slice(0, 2), 16) / 255;
+        const g = parseInt(c.slice(2, 4), 16) / 255;
+        const b = parseInt(c.slice(4, 6), 16) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+        let h = 0;
+        if (d !== 0) {
+          if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+          else if (max === g) h = ((b - r) / d + 2) * 60;
+          else h = ((r - g) / d + 4) * 60;
+        }
+        const s = max === 0 ? 0 : d / max;
+        return { h, s, v: max };
+      }
+      function hsvToHex(h, s, v) {
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let r = 0, g = 0, b = 0;
+        if (h < 60) { r = c; g = x; }
+        else if (h < 120) { r = x; g = c; }
+        else if (h < 180) { g = c; b = x; }
+        else if (h < 240) { g = x; b = c; }
+        else if (h < 300) { r = x; b = c; }
+        else { r = c; b = x; }
+        const toHex = (n) => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+        return ('#' + toHex(r) + toHex(g) + toHex(b)).toUpperCase();
+      }
+      function mountSleekColorPicker(containerEl, initialHex, onLiveChange, onCommit) {
+        if (!containerEl) return;
+        let hsv = hexToHsv(initialHex);
+        const supportsEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
+        containerEl.innerHTML = `
+          <div class="pt-2.5 mt-1 border-t border-[#F2F2F7] space-y-2.5 select-none">
+            <div data-cp-sv class="relative w-full h-28 rounded-xl overflow-hidden cursor-crosshair touch-none border border-black/10 shadow-inner">
+              <div class="absolute inset-0" style="background:linear-gradient(to right,#fff,transparent);"></div>
+              <div class="absolute inset-0" style="background:linear-gradient(to top,#000,transparent);"></div>
+              <div data-cp-sv-thumb class="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-[0_1px_4px_rgba(0,0,0,0.45)] -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+            </div>
+            <div data-cp-hue class="relative w-full h-3 rounded-full cursor-pointer touch-none border border-black/10" style="background:linear-gradient(to right,#ff3b30,#ff9500,#ffcc00,#34c759,#00c7be,#007aff,#af52de,#ff2d55,#ff3b30);">
+              <div data-cp-hue-thumb class="absolute top-1/2 w-4 h-4 rounded-full bg-white border border-black/15 shadow-[0_1px_4px_rgba(0,0,0,0.3)] -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span data-cp-preview class="w-6 h-6 rounded-full border border-black/15 shrink-0 shadow-inner"></span>
+              <input data-cp-hex type="text" maxlength="7" spellcheck="false" class="flex-1 min-w-0 font-mono text-[11px] uppercase bg-[#F5F5F7] text-[#1D1D1F] rounded-lg px-2 py-1 border border-[#E5E5EA] focus:border-[#1D1D1F] outline-none" />
+              ${supportsEyeDropper ? `<button type="button" data-cp-eye title="ดูดสี" class="w-6 h-6 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] flex items-center justify-center text-[#424245] shrink-0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg></button>` : ''}
+            </div>
+          </div>
+        `;
+        const svPad = containerEl.querySelector('[data-cp-sv]');
+        const svThumb = containerEl.querySelector('[data-cp-sv-thumb]');
+        const hueBar = containerEl.querySelector('[data-cp-hue]');
+        const hueThumb = containerEl.querySelector('[data-cp-hue-thumb]');
+        const previewDot = containerEl.querySelector('[data-cp-preview]');
+        const hexInp = containerEl.querySelector('[data-cp-hex]');
+        const eyeBtn = containerEl.querySelector('[data-cp-eye]');
+
+        const paint = (emit) => {
+          const hex = hsvToHex(hsv.h, hsv.s, hsv.v);
+          svPad.style.backgroundColor = `hsl(${Math.round(hsv.h)}, 100%, 50%)`;
+          svThumb.style.left = (hsv.s * 100) + '%';
+          svThumb.style.top = ((1 - hsv.v) * 100) + '%';
+          svThumb.style.backgroundColor = hex;
+          hueThumb.style.left = ((hsv.h / 360) * 100) + '%';
+          previewDot.style.backgroundColor = hex;
+          if (document.activeElement !== hexInp) hexInp.value = hex;
+          if (emit && onLiveChange) onLiveChange(hex);
+        };
+        paint(false);
+
+        const bindDrag = (el, onPos) => {
+          const handle = (ev) => {
+            const rect = el.getBoundingClientRect();
+            const x = Math.max(0, Math.min(1, (ev.clientX - rect.left) / Math.max(1, rect.width)));
+            const y = Math.max(0, Math.min(1, (ev.clientY - rect.top) / Math.max(1, rect.height)));
+            onPos(x, y);
+            paint(true);
+          };
+          el.addEventListener('pointerdown', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            el.setPointerCapture(ev.pointerId);
+            handle(ev);
+          });
+          el.addEventListener('pointermove', (ev) => {
+            if (ev.buttons === 0 && !el.hasPointerCapture(ev.pointerId)) return;
+            if (el.hasPointerCapture(ev.pointerId)) handle(ev);
+          });
+          el.addEventListener('pointerup', (ev) => {
+            if (el.hasPointerCapture(ev.pointerId)) {
+              el.releasePointerCapture(ev.pointerId);
+              if (onCommit) onCommit(hsvToHex(hsv.h, hsv.s, hsv.v));
+            }
+          });
+        };
+
+        bindDrag(svPad, (x, y) => { hsv.s = x; hsv.v = 1 - y; });
+        bindDrag(hueBar, (x) => { hsv.h = x * 360; });
+
+        hexInp.addEventListener('mousedown', (e) => e.stopPropagation());
+        hexInp.addEventListener('input', () => {
+          const val = hexInp.value.trim();
+          const norm = val.startsWith('#') ? val : '#' + val;
+          if (/^#[0-9a-fA-F]{6}$/.test(norm)) {
+            hsv = hexToHsv(norm);
+            paint(true);
+            if (onCommit) onCommit(norm.toUpperCase());
+          }
+        });
+        if (eyeBtn) {
+          eyeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+          eyeBtn.addEventListener('click', async (e) => {
+            e.preventDefault(); e.stopPropagation();
+            try {
+              const res = await new window.EyeDropper().open();
+              if (res && res.sRGBHex) {
+                hsv = hexToHsv(res.sRGBHex);
+                paint(true);
+                if (onCommit) onCommit(res.sRGBHex.toUpperCase());
+              }
+            } catch (_) {}
+          });
+        }
+      }
 
       const STORAGE_KEY_V2 = 'phfs_canvas_state_v2';
       const STORAGE_KEY_V1 = 'phfs_canvas_state_v1';
@@ -186,6 +358,8 @@
           copyrightText: `Copyright (c) 2026 ${familyName}`,
           version: '1.000',
           slantAngle: 0,
+          strokeWidth: 3.2,
+          fontType: 'drawn',
           unitsPerEm: 1000,
           glyphs: {},
           versions: [],
@@ -198,9 +372,11 @@
         schemaVersion: 2,
         lang: 'th',
         tab: 'dashboard',
+        librarySubView: 'list',
         category: 'thai_consonants',
         filterMode: 'all',
         previewMode: 'editor_simulated',
+        a4PreviewMode: false,
         mixProjectIds: [],
         customLoadedFontFamily: null,
         customLoadedFontName: null,
@@ -220,8 +396,11 @@
           thai: { intensity: 45, sizeVariation: 12, slantAngle: 0, charSpacing: 14, wordSpacing: 16 },
           english: { intensity: 45, sizeVariation: 14, slantAngle: 0, charSpacing: 16, wordSpacing: 18 }
         },
-        previewText: '- สวัสดีครับ ยินดีต้อนรับสู่ ==LineLux==\n- เขียนลายมือไทย ==กิ้ เก่ง น้ำ ผู้ ที่ ขึ้น== ได้อย่างเป็นธรรมชาติ\n1. เปลี่ยนสีตัวอักษรและ ==ไฮไลท์ทรงแคปซูล== ได้\n2. ผสมลายมือจากหลายโปรเจกต์ได้ทันที',
+        previewText: '',
+        previewHtml: '<div><mark class="pill-hl" data-hl-color="#FEF08A" style="background-color:#FEF08A;">LineLux</mark> เปลี่ยนข้อความให้เป็นลายมือที่สมจริงเหมือนเขียนเอง</div><ul><li>นำฟอนต์ทั้งหมดในคลังมาสุ่มสลับทีละตัว → ไม่ให้ตัวที่เหมือนกันอยู่ติดกัน</li><li>สุ่มปรับขนาด ความเอียง และช่องไฟอย่างพอดีเพื่อความเป็นธรรมชาติ</li></ul><ol><li>รองรับทั้ง <mark class="pill-hl" data-hl-color="#BBF7D0" style="background-color:#BBF7D0;">Bullet และ Number List</mark> แบบลายมือสุ่ม</li><li>กด Preview A4 หรือนำเข้า <mark class="pill-hl" data-hl-color="#BAE6FD" style="background-color:#BAE6FD;">PDF</mark> เพื่อวาง Textbox เขียนทับเอกสารได้ทันที</li></ol>',
+        textboxes: [], // { id, xRatio, yRatio, text, fontSize, color, page }
         previewSize: 36,
+        lastTextboxFontSize: 28,
         previewLineHeight: 1.8,
         previewSpacing: 1,
         previewTextColor: '#1D1D1F',
@@ -235,6 +414,18 @@
       let supabaseClient = null;
       let currentUser = null;
       let supaConfig = loadSupaConfig();
+      let loadedPdfDoc = null;
+      let loadedPdfName = '';
+      let loadedPdfPageNum = 1;
+      let loadedPdfPageCount = 0;
+      let loadedPdfBgCanvas = null;
+      let activeEditingTextboxId = null;
+      let isPlacingTextbox = false;
+
+      const DEFAULT_SUPA_CONFIG = {
+        url: 'https://mnapprclxzbnylwjyrns.supabase.co',
+        anonKey: 'sb_publishable_PQ7f3J0CCFm5MGyiP-F5sQ_pZkMmqBM'
+      };
 
       function loadSupaConfig() {
         try {
@@ -242,9 +433,12 @@
             return window.__LINELUX_SUPABASE__;
           }
           const raw = localStorage.getItem(SUPA_CFG_KEY);
-          if (raw) return JSON.parse(raw);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.url && parsed.anonKey) return parsed;
+          }
         } catch (_) {}
-        return { url: '', anonKey: '' };
+        return { ...DEFAULT_SUPA_CONFIG };
       }
 
       function initSupabaseClient() {
@@ -376,6 +570,7 @@
               guides: currentState.guides,
               lang: currentState.lang,
               previewText: currentState.previewText,
+              previewHtml: currentState.previewHtml,
               previewSize: currentState.previewSize,
               previewLineHeight: currentState.previewLineHeight,
               previewSpacing: currentState.previewSpacing,
@@ -429,6 +624,8 @@
         return {
           ...p,
           slantAngle: typeof p.slantAngle === 'number' ? p.slantAngle : 0,
+          strokeWidth: typeof p.strokeWidth === 'number' ? p.strokeWidth : 3.2,
+          fontType: p.fontType || 'drawn',
           fullName: p.fullName || `${fam} ${style}`,
           postscriptName: p.postscriptName || `${fam}-${style}`.replace(/[^A-Za-z0-9_-]/g, ''),
           copyrightText: p.copyrightText || `Copyright (c) 2026 ${p.designer || fam}`,
@@ -478,14 +675,10 @@
         saveToIndexedDB(state.projects, state);
         try { localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(state)); } catch (_) {}
         if (currentUser && supabaseClient) syncActiveProjectToCloud();
-        const lbl = document.getElementById('saveStatusLabel');
-        if (lbl) lbl.textContent = state.lang === 'th' ? 'บันทึกแล้ว' : 'Saved';
       }
 
       // Debounced save so lifting the pen between stroke 1 and stroke 2 NEVER blocks the UI thread!
       function saveState(immediate = false) {
-        const lbl = document.getElementById('saveStatusLabel');
-        if (lbl) lbl.textContent = state.lang === 'th' ? 'กำลังบันทึก...' : 'Saving...';
         clearTimeout(saveTimer);
         if (immediate) {
           persistNow();
@@ -593,16 +786,28 @@
         return [];
       }
 
-      function getPreviewSourceProjects(primaryProj) {
-        const selectedIds = new Set(Array.isArray(state.mixProjectIds) ? state.mixProjectIds : []);
-        const extras = state.projects.filter(p => p.id !== primaryProj.id && selectedIds.has(p.id));
-        return [primaryProj, ...extras];
+      function getPreviewSourceProjects(_primaryProj) {
+        return state.projects.slice();
       }
 
       function collectVariationInstances(cp, sourceProjects) {
         const pool = [];
         for (const p of sourceProjects) {
-          const glyph = p && p.glyphs ? p.glyphs[cp] : null;
+          if (!p) continue;
+          if (p.fontType === 'ttf' && p.ttfFamily) {
+            pool.push({
+              id: `${p.id}::ttf`,
+              isTtf: true,
+              ttfFamily: p.ttfFamily,
+              strokes: null,
+              sourceProjectId: p.id,
+              sourceProjectName: p.name,
+              canvasWidth: 96,
+              canvasHeight: 120
+            });
+            continue;
+          }
+          const glyph = p.glyphs ? p.glyphs[cp] : null;
           if (!glyph) continue;
           const valid = getValidInstances(glyph);
           for (const inst of valid) {
@@ -619,7 +824,7 @@
         return pool;
       }
 
-      // Parse Notion-style lines (bullet `- ` / `* `, numbered `1. `, and `==highlight==` pill spans)
+      // Parse rich lines (bullet `- ` / `* `, numbered `1. `, and `==highlight==` pill spans)
       function parseRichPreviewLines(rawText) {
         return rawText.split('\n').map(line => {
           let listType = null;
@@ -655,16 +860,95 @@
         });
       }
 
-      function computePreviewLayout(text, proj, variation, fontSize, lineHeight, baseTracking, guides, maxWidth, extraProjects = null) {
+      function extractRichLinesFromEditor(editorEl) {
+        if (!editorEl) return [];
+        const lines = [];
+
+        const collectSegments = (node, activeHl = null, out = []) => {
+          if (node.nodeType === 3) {
+            const txt = node.nodeValue || '';
+            if (txt) out.push({ text: txt, highlighted: Boolean(activeHl), hlColor: activeHl });
+            return out;
+          }
+          if (node.nodeType !== 1) return out;
+          const tag = node.tagName.toUpperCase();
+          if (tag === 'BR') return out;
+          let nextHl = activeHl;
+          if (tag === 'MARK' || node.classList.contains('pill-hl') || node.getAttribute('data-hl-color')) {
+            nextHl = node.getAttribute('data-hl-color') || node.style.backgroundColor || state.previewHighlightColor;
+          }
+          for (const child of Array.from(node.childNodes)) {
+            collectSegments(child, nextHl, out);
+          }
+          return out;
+        };
+
+        const walkBlock = (container) => {
+          let inlineBuf = [];
+          const flushInline = () => {
+            if (inlineBuf.length > 0) {
+              lines.push({ listType: null, listPrefix: '', segments: inlineBuf });
+              inlineBuf = [];
+            }
+          };
+
+          for (const child of Array.from(container.childNodes)) {
+            if (child.nodeType === 3) {
+              const txt = (child.nodeValue || '').replace(/\r/g, '');
+              if (txt) inlineBuf.push({ text: txt, highlighted: false, hlColor: null });
+              continue;
+            }
+            if (child.nodeType !== 1) continue;
+            const tag = child.tagName.toUpperCase();
+            if (tag === 'UL' || tag === 'OL') {
+              flushInline();
+              let num = 1;
+              for (const li of Array.from(child.children)) {
+                if (li.tagName.toUpperCase() !== 'LI') continue;
+                const segs = collectSegments(li, null, []);
+                lines.push({
+                  listType: tag === 'UL' ? 'bullet' : 'number',
+                  listPrefix: tag === 'UL' ? '•' : `${num++}.`,
+                  segments: segs.length ? segs : [{ text: '', highlighted: false, hlColor: null }]
+                });
+              }
+            } else if (tag === 'DIV' || tag === 'P') {
+              flushInline();
+              const hasNestedList = Array.from(child.children).some(c => ['UL', 'OL', 'DIV', 'P'].includes(c.tagName.toUpperCase()));
+              if (hasNestedList) {
+                walkBlock(child);
+              } else {
+                const segs = collectSegments(child, null, []);
+                lines.push({
+                  listType: null,
+                  listPrefix: '',
+                  segments: segs.length ? segs : [{ text: '', highlighted: false, hlColor: null }]
+                });
+              }
+            } else if (tag === 'BR') {
+              flushInline();
+              lines.push({ listType: null, listPrefix: '', segments: [{ text: '', highlighted: false, hlColor: null }] });
+            } else {
+              collectSegments(child, null, inlineBuf);
+            }
+          }
+          flushInline();
+        };
+
+        walkBlock(editorEl);
+        return lines.length ? lines : [{ listType: null, listPrefix: '', segments: [{ text: '', highlighted: false, hlColor: null }] }];
+      }
+
+      function computePreviewLayout(input, proj, variation, fontSize, lineHeight, baseTracking, guides, maxWidth, extraProjects = null, measureCtx = null, isA4 = false) {
         const rng = createSeededRng(variation.seed);
         const lastChosenByCp = {};
-        const padX = 28;
+        const padX = isA4 ? Math.round(maxWidth * 0.09) : 28;
         const lineStep = fontSize * lineHeight;
         let baselineY = padX + fontSize * 1.15;
         const items = [];
         const pills = [];
         const markers = [];
-        const richLines = parseRichPreviewLines(text);
+        const richLines = Array.isArray(input) ? input : parseRichPreviewLines(String(input || ''));
 
         const sourceProjects = Array.isArray(extraProjects) && extraProjects.length > 0
           ? [proj, ...extraProjects.filter(p => p && p.id !== proj.id)]
@@ -677,12 +961,58 @@
           let activeBase = null;
 
           if (line.listType) {
-            markers.push({
-              type: line.listType,
-              prefix: line.listPrefix,
-              x: padX + (line.listType === 'bullet' ? fontSize * 0.25 : 0),
-              y: baselineY
-            });
+            let mx = padX;
+            const prefixChars = Array.from(line.listPrefix);
+            const mCfg = variation.english;
+            const mInt = Math.max(0, Math.min(100, Number(mCfg.intensity) || 0)) / 100;
+            for (const mch of prefixChars) {
+              const mcp = mch.codePointAt(0);
+              const mInsts = collectVariationInstances(mcp, sourceProjects);
+              let mChosen = 0;
+              if (mInsts.length > 1 && mInt > 0) {
+                const prevM = lastChosenByCp[mcp];
+                const cands = [];
+                for (let k = 0; k < mInsts.length; k++) if (k !== prevM) cands.push(k);
+                mChosen = cands[Math.floor(rng() * cands.length)];
+              }
+              lastChosenByCp[mcp] = mChosen;
+              const mSel = mInsts.length > 0 ? mInsts[mChosen] : null;
+              const mSizePct = Math.max(0, Math.min(50, Number(mCfg.sizeVariation) || 0)) / 100;
+              const mScale = mInt === 0 ? 1.0 : Number(Math.max(0.75, Math.min(1.3, 1 + (rng() * 2 - 1) * mSizePct * mInt)).toFixed(4));
+              const mSlant = Number(Math.max(-25, Math.min(25, (Number(mCfg.slantAngle) || 0) + (mInt === 0 ? 0 : (rng() * 2 - 1) * 3.0 * mInt))).toFixed(2));
+              const mChH = (mSel && mSel.canvasHeight) || 120;
+              const mSpan = Math.max(mChH * (guides.baseline - guides.ascender), 1);
+              const mPxScale = (fontSize * 0.88 * mScale) / mSpan;
+              let mmMinX = Infinity, mmMaxX = -Infinity;
+              if (mSel && mSel.strokes) {
+                mSel.strokes.forEach(st => st.points.forEach(pt => { if (pt.x < mmMinX) mmMinX = pt.x; if (pt.x > mmMaxX) mmMaxX = pt.x; }));
+              }
+              let mw;
+              if (mSel && mSel.strokes && isFinite(mmMinX)) {
+                mw = Math.max((mmMaxX - mmMinX) * mPxScale, fontSize * 0.18 * mScale);
+              } else if (measureCtx) {
+                const mFam = (mSel && mSel.isTtf && mSel.ttfFamily) ? `"${mSel.ttfFamily}", "Noto Sans Thai", sans-serif` : '"Noto Sans Thai", "Inter", sans-serif';
+                measureCtx.font = `400 ${Math.round(fontSize * 0.88 * mScale)}px ${mFam}`;
+                mw = Math.max(measureCtx.measureText(mch).width, fontSize * 0.18 * mScale);
+              } else {
+                mw = fontSize * 0.34 * mScale;
+              }
+              items.push({
+                type: 'glyph', char: mch, codepoint: mcp, script: 'english', isCombining: false, isListMarker: true,
+                sourceProjectId: mSel ? mSel.sourceProjectId : proj.id,
+                instanceIndex: mChosen,
+                instanceId: mSel ? mSel.id : null,
+                isTtf: Boolean(mSel && mSel.isTtf),
+                ttfFamily: mSel && mSel.ttfFamily ? mSel.ttfFamily : null,
+                strokes: mSel ? mSel.strokes : null,
+                canvasWidth: (mSel && mSel.canvasWidth) || 96,
+                canvasHeight: mChH,
+                minX: isFinite(mmMinX) ? mmMinX : 0, maxX: isFinite(mmMaxX) ? mmMaxX : 50,
+                glyphW: Number(mw.toFixed(2)), x: Number(mx.toFixed(2)), baselineY: Number(baselineY.toFixed(2)),
+                scaleFactor: Number((mScale * 0.88).toFixed(4)), slantDeg: mSlant, charSpaceDelta: 0, charSpaceAfter: 0, attachedBaseIndex: null
+              });
+              mx += mw + fontSize * 0.05;
+            }
           }
 
           for (const seg of line.segments) {
@@ -734,7 +1064,7 @@
                 const isToneStacked = isTone && activeBase.hasUpperMark;
                 if (isAbove) activeBase.hasUpperMark = true;
                 let mMinX = Infinity, mMaxX = -Infinity;
-                if (selectedInst) {
+                if (selectedInst && selectedInst.strokes) {
                   selectedInst.strokes.forEach(st => st.points.forEach(p => { if (p.x < mMinX) mMinX = p.x; if (p.x > mMaxX) mMaxX = p.x; }));
                 }
                 items.push({
@@ -742,6 +1072,8 @@
                   sourceProjectId: selectedInst ? selectedInst.sourceProjectId : proj.id,
                   instanceIndex: chosenIdx,
                   instanceId: selectedInst ? selectedInst.id : null,
+                  isTtf: Boolean(selectedInst && selectedInst.isTtf),
+                  ttfFamily: selectedInst && selectedInst.ttfFamily ? selectedInst.ttfFamily : null,
                   strokes: selectedInst ? selectedInst.strokes : null,
                   canvasWidth: (selectedInst && selectedInst.canvasWidth) || 96,
                   canvasHeight: (selectedInst && selectedInst.canvasHeight) || 120,
@@ -762,22 +1094,33 @@
               const baselineJitterPx = intensity === 0 ? 0 : Number(((rng() * 2 - 1) * fontSize * 0.03 * intensity).toFixed(2));
               const charSpacePct = Math.max(0, Math.min(50, Number(cfg.charSpacing) || 0)) / 100;
               const charSpaceDelta = intensity === 0 ? 0 : (rng() * 2 - 1) * charSpacePct * (fontSize * 0.28) * intensity;
-              const charSpaceAfter = Number((fontSize * 0.12 + baseTracking + charSpaceDelta).toFixed(2));
+              const isDrawnGlyph = Boolean(selectedInst && selectedInst.strokes && selectedInst.strokes.length > 0);
+              const baseCharGap = isDrawnGlyph ? fontSize * 0.04 : 0;
+              const charSpaceAfter = Number((baseCharGap + baseTracking + charSpaceDelta).toFixed(2));
 
               const chCanvas = (selectedInst && selectedInst.canvasHeight) || 120;
               const span = Math.max(chCanvas * (guides.baseline - guides.ascender), 1);
               const scale = (fontSize * scaleFactor) / span;
               let minX = Infinity, maxX = -Infinity;
-              if (selectedInst) {
+              if (selectedInst && selectedInst.strokes) {
                 selectedInst.strokes.forEach(st => st.points.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; }));
               }
-              const glyphW = (selectedInst && isFinite(minX))
-                ? Math.max((maxX - minX) * scale, fontSize * 0.22 * scaleFactor)
-                : fontSize * 0.56 * scaleFactor;
+              let glyphW;
+              if (selectedInst && selectedInst.strokes && isFinite(minX)) {
+                glyphW = Math.max((maxX - minX) * scale, fontSize * 0.18 * scaleFactor);
+              } else if (measureCtx) {
+                const fam = (selectedInst && selectedInst.isTtf && selectedInst.ttfFamily)
+                  ? `"${selectedInst.ttfFamily}", "Noto Sans Thai", sans-serif`
+                  : '"Noto Sans Thai", "Inter", sans-serif';
+                measureCtx.font = `400 ${Math.round(fontSize * scaleFactor)}px ${fam}`;
+                glyphW = Math.max(measureCtx.measureText(ch).width, fontSize * 0.16 * scaleFactor);
+              } else {
+                glyphW = fontSize * 0.50 * scaleFactor;
+              }
 
               if (cursorX + glyphW > maxWidth - padX && cursorX > padX + indentPx) {
                 if (seg.highlighted && pillStartX !== null && cursorX > pillStartX) {
-                  pills.push({ x: pillStartX, y: pillLineY, width: cursorX - pillStartX });
+                  pills.push({ x: pillStartX, y: pillLineY, width: cursorX - pillStartX, color: seg.hlColor || state.previewHighlightColor });
                 }
                 cursorX = padX + indentPx;
                 baselineY += lineStep;
@@ -792,6 +1135,8 @@
                 sourceProjectId: selectedInst ? selectedInst.sourceProjectId : proj.id,
                 instanceIndex: chosenIdx,
                 instanceId: selectedInst ? selectedInst.id : null,
+                isTtf: Boolean(selectedInst && selectedInst.isTtf),
+                ttfFamily: selectedInst && selectedInst.ttfFamily ? selectedInst.ttfFamily : null,
                 strokes: selectedInst ? selectedInst.strokes : null,
                 canvasWidth: (selectedInst && selectedInst.canvasWidth) || 96,
                 canvasHeight: chCanvas,
@@ -806,7 +1151,7 @@
             }
 
             if (seg.highlighted && pillStartX !== null && cursorX > pillStartX) {
-              pills.push({ x: pillStartX, y: pillLineY, width: cursorX - pillStartX });
+              pills.push({ x: pillStartX, y: pillLineY, width: cursorX - pillStartX, color: seg.hlColor || state.previewHighlightColor });
             }
           }
           baselineY += lineStep;
@@ -839,10 +1184,14 @@
         if (!ctx) return null;
         const proj = getActiveProject();
         const dpr = window.devicePixelRatio || 1;
-        const width = canvas.clientWidth || 720;
-        const result = computePreviewLayout(text, proj, state.variation, fontSize, lineHeight, letterSpacing, state.guides, width);
-        const height = result.totalHeight;
+        const isA4 = Boolean(state.a4PreviewMode);
+        const parentW = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
+        const width = Math.max(280, Math.round(isA4 ? Math.min(parentW || 794, 794) : (parentW || canvas.clientWidth || 720)));
+        const result = computePreviewLayout(text, proj, state.variation, fontSize, lineHeight, letterSpacing, state.guides, width, null, ctx, isA4);
+        const a4Height = Math.round(width * (297 / 210));
+        const height = isA4 ? Math.max(a4Height, result.totalHeight) : Math.max(360, result.totalHeight);
 
+        canvas.style.width = width + 'px';
         canvas.style.height = height + 'px';
         canvas.width = Math.round(width * dpr);
         canvas.height = Math.round(height * dpr);
@@ -850,15 +1199,19 @@
         ctx.scale(dpr, dpr);
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, width, height);
+        // Draw imported PDF page as background if present
+        if (loadedPdfBgCanvas && (isA4 || loadedPdfDoc)) {
+          ctx.drawImage(loadedPdfBgCanvas, 0, 0, width, height);
+        }
 
         // 1. Draw Pill-Shaped Highlights underneath text
         const pillPadX = Math.round(fontSize * 0.24);
         const pillH = Math.round(fontSize * 1.18);
         for (const p of result.pills) {
-          drawPillRect(ctx, p.x - pillPadX, p.y - fontSize * 0.86, p.width + pillPadX * 2, pillH, state.previewHighlightColor);
+          drawPillRect(ctx, p.x - pillPadX, p.y - fontSize * 0.86, p.width + pillPadX * 2, pillH, p.color || state.previewHighlightColor);
         }
 
-        // 2. Draw Notion-style Bullet & Numbered List Markers
+        // 2. Draw Bullet & Numbered List Markers
         ctx.fillStyle = state.previewTextColor;
         for (const mk of result.markers) {
           if (mk.type === 'bullet') {
@@ -872,56 +1225,93 @@
           }
         }
 
-        // 3. Draw Handwritten Glyphs with Smooth Curves & Per-Glyph Variation
-        for (const item of result.items) {
-          if (item.type !== 'glyph') continue;
-          const span = Math.max(item.canvasHeight * (state.guides.baseline - state.guides.ascender), 1);
-          const scale = (fontSize * item.scaleFactor) / span;
-          const shear = Math.tan((item.slantDeg * Math.PI) / 180);
+        // Helper to draw a layout's items with perfect Thai cluster shaping (zero shifted vowels/tones!)
+        const drawLayoutItems = (itemsList, baseFontSize, inkColor, dx = 0, dy = 0, fallbackAlpha = 0.30) => {
+          for (let idx = 0; idx < itemsList.length; idx++) {
+            const item = itemsList[idx];
+            if (item.type !== 'glyph') continue;
+            const span = Math.max(item.canvasHeight * (state.guides.baseline - state.guides.ascender), 1);
+            const scale = (baseFontSize * item.scaleFactor) / span;
+            const shear = Math.tan((item.slantDeg * Math.PI) / 180);
 
-          if (item.strokes && item.strokes.length > 0) {
-            let offsetX, offsetY, pivotX, pivotY;
-            if (item.isCombining) {
-              const markCenter = ((item.minX + item.maxX) / 2) * scale;
-              const tallShift = TALL_ASCENDERS.has(item.baseCp) ? -fontSize * item.scaleFactor * 0.14 : 0;
-              offsetX = item.baseCenterX - markCenter + tallShift;
-              offsetY = item.baselineY - item.canvasHeight * state.guides.baseline * scale;
-              if (item.stackAboveVowel) offsetY -= fontSize * item.scaleFactor * 0.24;
-              pivotX = item.baseCenterX;
-              pivotY = item.baselineY;
+            if (item.strokes && item.strokes.length > 0) {
+              let offsetX, offsetY, pivotX, pivotY;
+              if (item.isCombining) {
+                const markCenter = ((item.minX + item.maxX) / 2) * scale;
+                const tallShift = TALL_ASCENDERS.has(item.baseCp) ? -baseFontSize * item.scaleFactor * 0.14 : 0;
+                offsetX = dx + item.baseCenterX - markCenter + tallShift;
+                offsetY = dy + item.baselineY - item.canvasHeight * state.guides.baseline * scale;
+                if (item.stackAboveVowel) offsetY -= baseFontSize * item.scaleFactor * 0.24;
+                pivotX = dx + item.baseCenterX;
+                pivotY = dy + item.baselineY;
+              } else {
+                offsetX = dx + item.x - item.minX * scale;
+                offsetY = dy + item.baselineY - item.canvasHeight * state.guides.baseline * scale;
+                pivotX = dx + item.x + item.glyphW * 0.5;
+                pivotY = dy + item.baselineY;
+              }
+
+              ctx.save();
+              ctx.translate(pivotX, pivotY);
+              if (Math.abs(shear) > 1e-4) ctx.transform(1, 0, -shear, 1, 0, 0);
+              ctx.translate(-pivotX, -pivotY);
+              for (const st of item.strokes) {
+                drawSmoothStroke(ctx, st, scale, offsetX, offsetY, state.pressureSensitive, inkColor);
+              }
+              ctx.restore();
             } else {
-              offsetX = item.x - item.minX * scale;
-              offsetY = item.baselineY - item.canvasHeight * state.guides.baseline * scale;
-              pivotX = item.x + item.glyphW * 0.5;
-              pivotY = item.baselineY;
+              // If this is a non-drawn base glyph followed by non-drawn Thai combining marks,
+              // group them into a single shaped string so browser OpenType keeps Thai marks 100% aligned!
+              if (item.isCombining && item._drawnWithBase) continue;
+              let clusterText = item.char;
+              if (!item.isCombining) {
+                let look = idx + 1;
+                while (look < itemsList.length) {
+                  const nxt = itemsList[look];
+                  if (nxt.type === 'glyph' && nxt.isCombining && (!nxt.strokes || nxt.strokes.length === 0)) {
+                    clusterText += nxt.char;
+                    nxt._drawnWithBase = true;
+                    look++;
+                  } else {
+                    break;
+                  }
+                }
+              }
+              ctx.save();
+              const px = dx + (item.isCombining ? item.baseCenterX : item.x);
+              const py = dy + item.baselineY;
+              ctx.translate(px, py);
+              if (Math.abs(shear) > 1e-4) ctx.transform(1, 0, -shear, 1, 0, 0);
+              ctx.fillStyle = inkColor;
+              ctx.globalAlpha = (item.isTtf || item.isListMarker) ? 1.0 : fallbackAlpha;
+              const fam = item.isTtf && item.ttfFamily ? `"${item.ttfFamily}", "Noto Sans Thai", sans-serif` : '"Noto Sans Thai", "Inter", sans-serif';
+              ctx.font = `400 ${Math.round(baseFontSize * item.scaleFactor)}px ${fam}`;
+              ctx.textAlign = item.isCombining ? 'center' : 'left';
+              ctx.textBaseline = 'alphabetic';
+              ctx.fillText(clusterText, 0, 0);
+              ctx.restore();
             }
-
-            ctx.save();
-            ctx.translate(pivotX, pivotY);
-            if (Math.abs(shear) > 1e-4) ctx.transform(1, 0, -shear, 1, 0, 0);
-            ctx.translate(-pivotX, -pivotY);
-            for (const st of item.strokes) {
-              drawSmoothStroke(ctx, st, scale, offsetX, offsetY, state.pressureSensitive, state.previewTextColor);
-            }
-            ctx.restore();
-          } else {
-            ctx.save();
-            const px = item.isCombining ? item.baseCenterX : item.x;
-            ctx.translate(px, item.baselineY);
-            if (Math.abs(shear) > 1e-4) ctx.transform(1, 0, -shear, 1, 0, 0);
-            ctx.fillStyle = state.previewTextColor;
-            ctx.globalAlpha = 0.28;
-            ctx.font = `400 ${Math.round(fontSize * item.scaleFactor)}px "Noto Sans Thai", "Inter", sans-serif`;
-            ctx.textBaseline = 'alphabetic';
-            ctx.fillText(item.char, 0, 0);
-            ctx.restore();
           }
+        };
+
+        // 3. Draw Main Document Glyphs
+        drawLayoutItems(result.items, fontSize, state.previewTextColor, 0, 0, 0.30);
+        // 4. Draw Floating Handwriting Textboxes in REALTIME (even while actively typing!)
+        const pageBoxes = (state.textboxes || []).filter(tb => (tb.page || 1) === (loadedPdfDoc ? loadedPdfPageNum : 1));
+        for (const tb of pageBoxes) {
+          if (!tb.text) continue;
+          const bx = Math.round((tb.xRatio || 0.1) * width);
+          const by = Math.round((tb.yRatio || 0.1) * height);
+          const tbSize = tb.fontSize || Math.round(fontSize * 0.78);
+          const tbColor = tb.color || state.previewTextColor;
+          const tbLayout = computePreviewLayout(tb.text, proj, state.variation, tbSize, 1.45, letterSpacing, state.guides, Math.max(180, width - bx - 16), null, ctx, false);
+          drawLayoutItems(tbLayout.items, tbSize, tbColor, bx - 28, by - 28, 0.85);
         }
         ctx.restore();
         return result.items;
       }
 
-      // Render Notion-style HTML for Real .TTF Preview mode (with Pill Highlight + Text Color + Lists)
+      // Render Rich HTML for Real .TTF Preview mode (with Pill Highlight + Text Color + Lists)
       function renderRichTtfHtml(rawText, hlColor) {
         const esc = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         return parseRichPreviewLines(rawText).map(line => {
@@ -1077,16 +1467,7 @@
           };
         };
 
-        const eraseNear = (pt) => {
-          const strokes = getStrokes();
-          const thr = Math.max(9, state.strokeWidth * 2.8);
-          const next = strokes.filter(s => !s.points.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) <= thr));
-          if (next.length !== strokes.length) {
-            setGlyphStrokes(spec.codepoint, spec, next);
-            rebuildBaseCache();
-            updateCardChrome();
-          }
-        };
+
 
         canvas.addEventListener('pointerdown', (e) => {
           const now = e.timeStamp || Date.now();
@@ -1117,14 +1498,12 @@
           try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
 
           const pt = getPoint(e);
-          if (state.tool === 'eraser') { eraseNear(pt); return; }
           pendingTouchStart = pType === 'touch' ? pt : null;
-          activeStroke = { id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5), width: state.strokeWidth, points: [pt] };
+          activeStroke = { id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5), width: (proj.strokeWidth || state.strokeWidth || 3.2), points: [pt] };
           if (pType !== 'touch') scheduleRender();
         });
 
         canvas.addEventListener('pointermove', (e) => {
-          if (state.tool === 'eraser') { if (e.buttons > 0) eraseNear(getPoint(e)); return; }
           if (!activeStroke || activePointerId !== e.pointerId) return;
           e.preventDefault();
           const raw = getPoint(e);
@@ -1183,45 +1562,6 @@
         updateCardChrome();
       }
 
-      // --- Sample Glyphs Helper (moved to Settings) ---
-      function loadSampleGlyphs() {
-        const proj = getActiveProject();
-        const w = state.cellWidth, h = Math.round(w * 1.25);
-        const mk = (pts, width = 3.2) => ({
-          id: 's_' + Math.random().toString(36).slice(2, 8),
-          width,
-          points: pts.map(([rx, ry, p = 0.58]) => ({ x: rx * w, y: ry * h, pressure: p }))
-        });
-        const samples = {
-          0x0E01: { char: 'ก', cat: 'thai_consonants', strokes: [mk([[0.28,0.74,0.5],[0.29,0.50,0.65],[0.36,0.44,0.6],[0.32,0.39,0.55],[0.48,0.31,0.7],[0.68,0.37,0.65],[0.71,0.55,0.6],[0.72,0.74,0.5]])] },
-          0x0E2A: { char: 'ส', cat: 'thai_consonants', strokes: [mk([[0.28,0.74],[0.29,0.46],[0.45,0.36],[0.66,0.44],[0.68,0.74]]), mk([[0.58,0.42],[0.78,0.26]])] },
-          0x0E27: { char: 'ว', cat: 'thai_consonants', strokes: [mk([[0.32,0.68],[0.44,0.74],[0.64,0.68],[0.66,0.46],[0.52,0.36],[0.36,0.40]])] },
-          0x0E14: { char: 'ด', cat: 'thai_consonants', strokes: [mk([[0.52,0.56],[0.42,0.68],[0.30,0.62],[0.32,0.44],[0.50,0.34],[0.68,0.44],[0.70,0.74]])] },
-          0x0E1B: { char: 'ป', cat: 'thai_consonants', strokes: [mk([[0.28,0.40],[0.30,0.73],[0.68,0.73],[0.70,0.16]])] },
-          0x0E31: { char: 'ั', cat: 'thai_vowels', strokes: [mk([[0.34,0.26],[0.48,0.34],[0.66,0.25]])] },
-          0x0E35: { char: 'ี', cat: 'thai_vowels', strokes: [mk([[0.32,0.32],[0.50,0.24],[0.66,0.32],[0.32,0.32]]), mk([[0.64,0.32],[0.66,0.20]])] },
-          0x0E48: { char: '่', cat: 'thai_tones', strokes: [mk([[0.50,0.16],[0.50,0.28]])] },
-          0x0E49: { char: '้', cat: 'thai_tones', strokes: [mk([[0.38,0.26],[0.48,0.18],[0.58,0.24],[0.68,0.16]])] },
-          0x0041: { char: 'A', cat: 'latin_upper', strokes: [mk([[0.26,0.74],[0.50,0.28],[0.74,0.74]]), mk([[0.35,0.56],[0.65,0.56]])] }
-        };
-        Object.entries(samples).forEach(([cpStr, item]) => {
-          const cp = Number(cpStr);
-          const altStrokes = item.strokes.map(st => ({
-            id: st.id + '_alt1',
-            width: Number((st.width * 1.08).toFixed(2)),
-            points: st.points.map((pt, idx) => ({ x: Number((pt.x + (idx % 2 === 0 ? 2.4 : -1.8)).toFixed(2)), y: Number((pt.y + (idx % 2 === 0 ? -1.4 : 1.6)).toFixed(2)), pressure: pt.pressure }))
-          }));
-          const instances = [
-            { id: 'inst_s1_' + cp, strokes: item.strokes, createdAt: new Date().toISOString() },
-            { id: 'inst_s2_' + cp, strokes: altStrokes, createdAt: new Date().toISOString() }
-          ];
-          proj.glyphs[cp] = { codepoint: cp, character: item.char, category: item.cat, canvasWidth: w, canvasHeight: h, strokes: instances[0].strokes, instances, activeInstanceIdx: 0, isCompleted: true, updatedAt: new Date().toISOString() };
-        });
-        saveState(true);
-        renderAll();
-        showToast(state.lang === 'th' ? 'เติมลายมือตัวอย่าง 10 อักขระแล้ว' : 'Loaded 10 sample glyphs');
-      }
-
       // --- Sidebar ---
       function renderSidebar() {
         const nav = document.getElementById('navList');
@@ -1236,6 +1576,7 @@
         nav.querySelectorAll('[data-nav]').forEach(btn => {
           btn.addEventListener('click', () => {
             state.tab = btn.getAttribute('data-nav');
+            if (state.tab === 'my-fonts') state.librarySubView = 'list';
             closeMobileSidebar();
             renderAll();
           });
@@ -1255,8 +1596,6 @@
           asub.textContent = state.lang === 'th' ? 'บันทึกในเครื่อง (Local)' : 'Local storage';
         }
 
-        document.getElementById('langToggleBtn').textContent = state.lang === 'th' ? 'EN' : 'ไทย';
-        document.getElementById('mobileLangBtn').textContent = state.lang === 'th' ? 'EN' : 'ไทย';
       }
 
       function openMobileSidebar() {
@@ -1272,40 +1611,43 @@
         }
       }
 
-      // --- 1. Dashboard (Shows All Fonts + Actionable Essential Lists Only) ---
+      // --- 1. Dashboard (All Fonts Used Together — No Active Lock, No New Font Button) ---
       function renderDashboard(main) {
-        const active = getActiveProject();
-        const activeDone = Object.values(active.glyphs).filter(g => getValidInstances(g).length > 0).length;
-        const activePct = Math.round((activeDone / CHARACTER_SET.length) * 100);
+        const unionDrawnCps = new Set();
+        state.projects.forEach(p => {
+          Object.entries(p.glyphs || {}).forEach(([cp, g]) => {
+            if (getValidInstances(g).length > 0) unionDrawnCps.add(Number(cp));
+          });
+        });
+        const totalPct = Math.round((unionDrawnCps.size / CHARACTER_SET.length) * 100);
 
         const fontListHtml = state.projects.map(p => {
+          const isTtf = p.fontType === 'ttf';
           const done = Object.values(p.glyphs || {}).filter(g => getValidInstances(g).length > 0).length;
-          const pct = Math.round((done / CHARACTER_SET.length) * 100);
-          const isAct = p.id === active.id;
+          const pct = isTtf ? 100 : Math.round((done / CHARACTER_SET.length) * 100);
           return `
-            <div class="flex items-center justify-between gap-4 p-4 rounded-2xl bg-white border ${isAct ? 'border-[#1D1D1F]' : 'border-[#E5E5EA]'}">
+            <div class="flex items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-[#E5E5EA]">
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
                   <span class="font-medium text-sm truncate">${p.name}</span>
-                  ${isAct ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-[#1D1D1F] text-white">${state.lang === 'th' ? 'ใช้งานอยู่' : 'Active'}</span>` : ''}
+                  <span class="text-[11px] text-[#8E8E93]">${isTtf ? '.TTF' : `หัวปากกา ${(p.strokeWidth || 3.2).toFixed(1)}px`}</span>
                 </div>
                 <div class="mt-2 flex items-center gap-3">
                   <div class="h-1.5 flex-1 max-w-[180px] rounded-full bg-[#F2F2F7] overflow-hidden"><div class="h-full bg-[#1D1D1F]" style="width:${pct}%"></div></div>
-                  <span class="text-xs text-[#6E6E73]">${done}/${CHARACTER_SET.length}</span>
+                  <span class="text-xs text-[#6E6E73]">${isTtf ? (state.lang === 'th' ? 'นำเข้าจาก .TTF' : 'Imported .TTF') : `${done}/${CHARACTER_SET.length}`}</span>
                 </div>
               </div>
               <div class="flex items-center gap-2 shrink-0">
-                <button type="button" data-dash-write="${p.id}" class="px-3 py-1.5 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium">${state.lang === 'th' ? 'เขียนต่อ' : 'Write'}</button>
+                ${!isTtf ? `<button type="button" data-dash-write="${p.id}" class="px-3 py-1.5 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium">${state.lang === 'th' ? 'เขียนต่อ' : 'Write'}</button>` : ''}
                 <button type="button" data-dash-preview="${p.id}" class="px-3 py-1.5 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] text-xs font-medium">${state.lang === 'th' ? 'ตัวอย่าง' : 'Preview'}</button>
               </div>
             </div>
           `;
         }).join('');
 
-        // Meaningful Next-Steps Category Checklist (only incomplete categories)
         const nextCats = CATEGORIES.map(cat => {
           const all = CHARACTER_SET.filter(c => c.category === cat.id);
-          const done = all.filter(c => getValidInstances(active.glyphs[c.codepoint]).length > 0).length;
+          const done = all.filter(c => unionDrawnCps.has(c.codepoint)).length;
           return { ...cat, done, total: all.length, remaining: all.length - done };
         }).filter(c => c.remaining > 0).slice(0, 4);
 
@@ -1316,38 +1658,32 @@
                 <span class="text-[#6E6E73]">${state.lang === 'th' ? `เหลือ ${c.remaining} ตัว` : `${c.remaining} left`} · ${c.done}/${c.total}</span>
               </button>
             `).join('')
-          : `<div class="p-4 rounded-xl bg-white border border-[#E5E5EA] text-xs text-[#6E6E73]">${state.lang === 'th' ? 'เขียนครบทุกหมวดแล้ว พร้อมส่งออกฟอนต์!' : 'All character categories complete!'}</div>`;
+          : `<div class="p-4 rounded-xl bg-white border border-[#E5E5EA] text-xs text-[#6E6E73]">${state.lang === 'th' ? 'เขียนครบทุกหมวดแล้ว!' : 'All character categories complete!'}</div>`;
 
         main.innerHTML = `
           <div class="max-w-4xl mx-auto space-y-6">
-            <div class="flex items-end justify-between gap-4">
-              <div>
-                <h1 class="text-2xl font-semibold tracking-tight">LineLux</h1>
-                <p class="text-sm text-[#6E6E73] mt-0.5">${state.lang === 'th' ? 'ภาพรวมฟอนต์ลายมือของคุณ' : 'Your handwriting font overview'}</p>
-              </div>
-              <button id="dashNewFontBtn" type="button" class="px-4 py-2 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium hover:bg-black">${state.lang === 'th' ? '+ สร้างฟอนต์ใหม่' : '+ New Font'}</button>
+            <div>
+              <h1 class="text-2xl font-semibold tracking-tight">LineLux</h1>
+              <p class="text-sm text-[#6E6E73] mt-0.5">${state.lang === 'th' ? 'ทุกฟอนต์ในคลังถูกนำมาผสมสร้างลายมือร่วมกันโดยอัตโนมัติ' : 'All fonts in your library blend together automatically.'}</p>
             </div>
-
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div class="p-5 rounded-2xl bg-white border border-[#E5E5EA]">
                 <div class="text-xs text-[#6E6E73]">${state.lang === 'th' ? 'ฟอนต์ทั้งหมด' : 'Total Fonts'}</div>
                 <div class="text-2xl font-semibold mt-1">${state.projects.length}</div>
               </div>
               <div class="p-5 rounded-2xl bg-white border border-[#E5E5EA]">
-                <div class="text-xs text-[#6E6E73]">${state.lang === 'th' ? 'ความคืบหน้าฟอนต์ปัจจุบัน' : 'Active Progress'}</div>
-                <div class="text-2xl font-semibold mt-1">${activePct}%</div>
+                <div class="text-xs text-[#6E6E73]">${state.lang === 'th' ? 'ความครอบคลุมรวมทุกฟอนต์' : 'Combined Coverage'}</div>
+                <div class="text-2xl font-semibold mt-1">${totalPct}%</div>
               </div>
               <div class="p-5 rounded-2xl bg-white border border-[#E5E5EA]">
                 <div class="text-xs text-[#6E6E73]">${state.lang === 'th' ? 'การซิงก์บัญชี' : 'Cloud Sync'}</div>
                 <div class="text-sm font-semibold mt-2">${currentUser ? (state.lang === 'th' ? 'เชื่อมต่อ Google แล้ว' : 'Google Connected') : (state.lang === 'th' ? 'บันทึกในเครื่อง' : 'Local Only')}</div>
               </div>
             </div>
-
             <div class="space-y-3">
               <h2 class="text-sm font-semibold">${state.lang === 'th' ? 'ฟอนต์ที่มีอยู่' : 'Your Fonts'}</h2>
               <div class="space-y-2.5">${fontListHtml}</div>
             </div>
-
             <div class="space-y-3">
               <h2 class="text-sm font-semibold">${state.lang === 'th' ? 'รายการที่ควรเขียนต่อ' : 'Next to Write'}</h2>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">${todoListHtml}</div>
@@ -1355,41 +1691,43 @@
           </div>
         `;
 
-        document.getElementById('dashNewFontBtn').addEventListener('click', openNewProjectModal);
         main.querySelectorAll('[data-dash-write]').forEach(b => b.addEventListener('click', () => {
-          state.activeProjectId = b.getAttribute('data-dash-write'); state.tab = 'studio'; saveState(true); renderAll();
+          state.activeProjectId = b.getAttribute('data-dash-write'); state.tab = 'my-fonts'; state.librarySubView = 'studio'; saveState(true); renderAll();
         }));
         main.querySelectorAll('[data-dash-preview]').forEach(b => b.addEventListener('click', () => {
-          state.activeProjectId = b.getAttribute('data-dash-preview'); state.tab = 'preview'; saveState(true); renderAll();
+          state.tab = 'preview'; renderAll();
         }));
         main.querySelectorAll('[data-jump-cat]').forEach(b => b.addEventListener('click', () => {
-          state.category = b.getAttribute('data-jump-cat'); state.tab = 'studio'; saveState(true); renderAll();
+          state.category = b.getAttribute('data-jump-cat'); state.tab = 'my-fonts'; state.librarySubView = 'studio'; saveState(true); renderAll();
         }));
       }
 
-      // --- 2. Font Library (Minimalist — Essentials Only) ---
+      // --- 2. Font Library (Pen Head Size + Import .JSON / .TTF + No Active Lock) ---
       function renderMyFonts(main) {
-        const active = getActiveProject();
         const cards = state.projects.map(p => {
+          const isTtf = p.fontType === 'ttf';
           const count = Object.values(p.glyphs || {}).filter(g => getValidInstances(g).length > 0).length;
-          const pct = Math.round((count / CHARACTER_SET.length) * 100);
-          const isAct = p.id === active.id;
+          const pct = isTtf ? 100 : Math.round((count / CHARACTER_SET.length) * 100);
           return `
-            <div class="p-5 rounded-2xl bg-white border transition-all ${isAct ? 'border-[#1D1D1F]' : 'border-[#E5E5EA]'}">
+            <div class="p-5 rounded-2xl bg-white border border-[#E5E5EA]">
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
                   <h3 class="font-semibold text-base truncate">${p.name}</h3>
-                  <p class="text-xs text-[#6E6E73] mt-0.5">${count} / ${CHARACTER_SET.length} ${state.lang === 'th' ? 'อักขระ' : 'glyphs'} (${pct}%)</p>
+                  <p class="text-xs text-[#6E6E73] mt-0.5">
+                    ${isTtf
+                      ? (state.lang === 'th' ? 'ฟอนต์นำเข้า (.TTF)' : 'Imported .TTF')
+                      : `${count} / ${CHARACTER_SET.length} ${state.lang === 'th' ? 'อักขระ' : 'glyphs'} (${pct}%) · ${state.lang === 'th' ? 'หัวปากกา' : 'Pen'} ${(p.strokeWidth || 3.2).toFixed(1)}px`}
+                  </p>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   <button type="button" data-rename="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:bg-[#F2F2F7]" title="Rename"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                  <button type="button" data-dup="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:bg-[#F2F2F7]" title="Duplicate"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                  ${!isTtf ? `<button type="button" data-dup="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:bg-[#F2F2F7]" title="Duplicate"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>` : ''}
                   ${state.projects.length > 1 ? `<button type="button" data-del="${p.id}" class="p-1.5 rounded-lg text-[#6E6E73] hover:text-red-600 hover:bg-[#F2F2F7]" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
                 </div>
               </div>
               <div class="mt-3 h-1.5 w-full rounded-full bg-[#F2F2F7] overflow-hidden"><div class="h-full bg-[#1D1D1F]" style="width:${pct}%"></div></div>
               <div class="mt-4 flex justify-end">
-                <button type="button" data-open="${p.id}" class="px-3.5 py-1.5 rounded-xl bg-[#F5F5F7] hover:bg-[#1D1D1F] hover:text-white text-xs font-medium transition-colors">${state.lang === 'th' ? 'เปิดเขียน' : 'Open'}</button>
+                ${!isTtf ? `<button type="button" data-open="${p.id}" class="px-3.5 py-1.5 rounded-xl bg-[#F5F5F7] hover:bg-[#1D1D1F] hover:text-white text-xs font-medium transition-colors">${state.lang === 'th' ? 'เปิดเขียน' : 'Open'}</button>` : `<span class="text-[11px] text-[#8E8E93]">${state.lang === 'th' ? 'พร้อมผสมในหน้าแสดงตัวอย่าง' : 'Active in Preview'}</span>`}
               </div>
             </div>
           `;
@@ -1397,16 +1735,81 @@
 
         main.innerHTML = `
           <div class="max-w-4xl mx-auto space-y-6">
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
               <h1 class="text-2xl font-semibold tracking-tight">${state.lang === 'th' ? 'คลังฟอนต์' : 'Font Library'}</h1>
-              <button id="newFontBtn" type="button" class="px-4 py-2 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium hover:bg-black">${state.lang === 'th' ? '+ สร้างฟอนต์ใหม่' : '+ New Font'}</button>
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-[#D2D2D7] hover:bg-[#F5F5F7] text-xs font-medium">
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  <span>${state.lang === 'th' ? 'นำเข้า' : 'Import'}</span>
+                  <input id="libImportFontInput" type="file" accept=".json,.ttf,.otf,application/json,font/ttf" class="hidden" />
+                </label>
+                <button id="libExportFontBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-[#D2D2D7] hover:bg-[#F5F5F7] text-xs font-medium">
+                  <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                  <span>${state.lang === 'th' ? 'ส่งออก' : 'Export'}</span>
+                </button>
+                <button id="newFontBtn" type="button" class="px-4 py-2 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium hover:bg-black">${state.lang === 'th' ? '+ สร้างฟอนต์ใหม่' : '+ New Font'}</button>
+              </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${cards}</div>
           </div>
         `;
 
         document.getElementById('newFontBtn').addEventListener('click', openNewProjectModal);
-        main.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { state.activeProjectId = b.getAttribute('data-open'); state.tab = 'studio'; saveState(true); renderAll(); }));
+        document.getElementById('libExportFontBtn').addEventListener('click', openExportModal);
+        document.getElementById('libImportFontInput').addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const lower = file.name.toLowerCase();
+          if (lower.endsWith('.json')) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const parsed = JSON.parse(reader.result);
+                const restored = createProject(parsed.family_name || parsed.name || file.name.replace(/\.json$/i, ''), parsed.family_name || parsed.familyName || 'LineLuxImported');
+                if (typeof parsed.strokeWidth === 'number') restored.strokeWidth = parsed.strokeWidth;
+                if (Array.isArray(parsed.glyphs)) {
+                  parsed.glyphs.forEach(g => {
+                    const insts = [{ id: 'imp_' + g.codepoint, strokes: g.strokes || [], createdAt: new Date().toISOString() }];
+                    if (Array.isArray(g.alternate_strokes)) g.alternate_strokes.forEach((st, i) => insts.push({ id: `imp_${g.codepoint}_${i}`, strokes: st, createdAt: new Date().toISOString() }));
+                    restored.glyphs[g.codepoint] = { codepoint: g.codepoint, character: g.character, category: g.category || 'thai_consonants', canvasWidth: g.canvas_width || 96, canvasHeight: g.canvas_height || 120, strokes: insts[0].strokes, instances: insts, activeInstanceIdx: 0, isCompleted: true, updatedAt: new Date().toISOString() };
+                  });
+                }
+                state.projects.unshift(restored);
+                saveState(true); renderAll();
+                showToast(state.lang === 'th' ? `นำเข้าฟอนต์ ${restored.name} (.JSON) แล้ว` : `Imported ${restored.name} (.JSON)`);
+              } catch (_) {
+                showToast(state.lang === 'th' ? 'ไฟล์ JSON ไม่ถูกต้อง' : 'Invalid JSON file');
+              }
+            };
+            reader.readAsText(file);
+          } else if (lower.endsWith('.ttf') || lower.endsWith('.otf')) {
+            try {
+              const buf = await file.arrayBuffer();
+              const fam = 'LineLuxTTF_' + Date.now();
+              const face = new FontFace(fam, buf);
+              await face.load();
+              document.fonts.add(face);
+              const bytes = new Uint8Array(buf);
+              let bin = '';
+              for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+              const b64 = btoa(bin);
+              const cleanName = file.name.replace(/\.(ttf|otf)$/i, '');
+              const ttfProj = {
+                ...createProject(cleanName, cleanName.replace(/[^A-Za-z0-9]/g, '') || 'ImportedTTF'),
+                fontType: 'ttf',
+                ttfFamily: fam,
+                ttfBase64: b64
+              };
+              state.projects.unshift(ttfProj);
+              saveState(true); renderAll();
+              showToast(state.lang === 'th' ? `นำเข้าฟอนต์ ${cleanName} (.TTF) แล้ว` : `Imported ${cleanName} (.TTF)`);
+            } catch (_) {
+              showToast(state.lang === 'th' ? 'ไม่สามารถโหลดไฟล์ .TTF ได้' : 'Could not load .TTF file');
+            }
+          }
+        });
+
+        main.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { state.activeProjectId = b.getAttribute('data-open'); state.tab = 'my-fonts'; state.librarySubView = 'studio'; saveState(true); renderAll(); }));
         main.querySelectorAll('[data-rename]').forEach(b => b.addEventListener('click', () => {
           const target = state.projects.find(p => p.id === b.getAttribute('data-rename'));
           if (!target) return;
@@ -1431,7 +1834,7 @@
           if (!src) return;
           const copy = JSON.parse(JSON.stringify(src));
           copy.id = 'proj_' + Date.now(); copy.name = src.name + ' (Copy)';
-          state.projects.unshift(copy); state.activeProjectId = copy.id; saveState(true); renderAll();
+          state.projects.unshift(copy); saveState(true); renderAll();
         }));
         main.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
           const id = b.getAttribute('data-del');
@@ -1439,6 +1842,111 @@
           if (state.activeProjectId === id) state.activeProjectId = state.projects[0].id;
           saveState(true); renderAll();
         }));
+      }
+
+      function openExportModal() {
+        const overlay = document.getElementById('modalOverlay');
+        const card = document.getElementById('modalCard');
+        let exportFormat = 'json';
+        const selectedIds = new Set(state.projects.map(p => p.id));
+
+        const drawExportModal = () => {
+          card.innerHTML = `
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-base font-semibold">${state.lang === 'th' ? 'ส่งออกฟอนต์' : 'Export Fonts'}</h3>
+              <button id="closeExpModalBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="space-y-4 text-xs">
+              <div class="space-y-2">
+                <div class="font-medium text-[#1D1D1F]">${state.lang === 'th' ? 'เลือกชุดฟอนต์ที่ต้องการส่งออก' : 'Select Font Sets'}</div>
+                <div class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  ${state.projects.map(p => {
+                    const count = Object.values(p.glyphs || {}).filter(g => getValidInstances(g).length > 0).length;
+                    const checked = selectedIds.has(p.id);
+                    return `<label class="flex items-center justify-between p-2.5 rounded-xl border cursor-pointer ${checked ? 'border-[#1D1D1F] bg-[#FAFAFC]' : 'border-[#E5E5EA]'}">
+                      <span class="flex items-center gap-2">
+                        <input type="checkbox" data-exp-sel="${p.id}" ${checked ? 'checked' : ''} />
+                        <span class="font-medium">${p.name}</span>
+                      </span>
+                      <span class="text-[#8E8E93]">${p.fontType === 'ttf' ? '.TTF' : `${count} ตัว · ${(p.strokeWidth || 3.2).toFixed(1)}px`}</span>
+                    </label>`;
+                  }).join('')}
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <div class="font-medium text-[#1D1D1F]">${state.lang === 'th' ? 'เลือกชนิดไฟล์' : 'File Format'}</div>
+                <div class="grid grid-cols-1 gap-2">
+                  <button type="button" id="fmtChoiceJson" class="text-left p-3 rounded-xl border transition-colors ${exportFormat === 'json' ? 'border-[#1D1D1F] bg-[#FAFAFC]' : 'border-[#E5E5EA] hover:bg-[#F5F5F7]'}">
+                    <div class="font-semibold text-[#1D1D1F]">.JSON (สำหรับ LineLux)</div>
+                    <div class="text-[11px] text-[#6E6E73] mt-0.5">${state.lang === 'th' ? 'ใช้สำหรับส่งออกหรือสำรองข้อมูลเพื่อนำกลับมาใช้และแก้ไขต่อใน LineLux' : 'For exporting and re-importing editable font sets inside LineLux.'}</div>
+                  </button>
+                  <button type="button" id="fmtChoiceTtf" class="text-left p-3 rounded-xl border transition-colors ${exportFormat === 'ttf' ? 'border-[#1D1D1F] bg-[#FAFAFC]' : 'border-[#E5E5EA] hover:bg-[#F5F5F7]'}">
+                    <div class="font-semibold text-[#1D1D1F]">.TTF (ฟอนต์ใช้งานจริง)</div>
+                    <div class="text-[11px] text-[#6E6E73] mt-0.5">${state.lang === 'th' ? 'ใช้สำหรับนำไปติดตั้งเป็นฟอนต์ใช้งานจริงบน macOS, iPad, GoodNotes หรือแอปทั่วไป' : 'For installing as a real system font on macOS, iPad, GoodNotes, or design apps.'}</div>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-end gap-2 pt-2">
+                <button id="cancelExpBtn" type="button" class="px-3.5 py-2 rounded-xl border border-[#D2D2D7]">${state.lang === 'th' ? 'ยกเลิก' : 'Cancel'}</button>
+                <button id="confirmExpBtn" type="button" class="px-4 py-2 rounded-xl bg-[#1D1D1F] text-white font-medium hover:bg-black">${state.lang === 'th' ? 'ดาวน์โหลดไฟล์' : 'Download'}</button>
+              </div>
+            </div>
+          `;
+          if (window.lucide) window.lucide.createIcons();
+
+          const close = () => overlay.classList.add('hidden');
+          document.getElementById('closeExpModalBtn').addEventListener('click', close);
+          document.getElementById('cancelExpBtn').addEventListener('click', close);
+          document.getElementById('fmtChoiceJson').addEventListener('click', () => { exportFormat = 'json'; drawExportModal(); });
+          document.getElementById('fmtChoiceTtf').addEventListener('click', () => { exportFormat = 'ttf'; drawExportModal(); });
+          card.querySelectorAll('[data-exp-sel]').forEach(chk => chk.addEventListener('change', (e) => {
+            const id = chk.getAttribute('data-exp-sel');
+            if (e.target.checked) selectedIds.add(id); else selectedIds.delete(id);
+            drawExportModal();
+          }));
+          document.getElementById('confirmExpBtn').addEventListener('click', () => {
+            const chosen = state.projects.filter(p => selectedIds.has(p.id));
+            if (chosen.length === 0) {
+              showToast(state.lang === 'th' ? 'กรุณาเลือกอย่างน้อย 1 ชุดฟอนต์' : 'Select at least 1 font set');
+              return;
+            }
+            if (exportFormat === 'json') {
+              chosen.forEach(p => {
+                const drawn = Object.values(p.glyphs || {}).filter(g => getValidInstances(g).length > 0);
+                const payload = {
+                  family_name: p.familyName || p.name, name: p.name, style_name: p.styleName || 'Regular',
+                  strokeWidth: p.strokeWidth || 3.2, slant_angle: p.slantAngle || 0, version: p.version || '1.000',
+                  glyphs: drawn.map(g => {
+                    const valid = getValidInstances(g);
+                    return { codepoint: g.codepoint, character: g.character, category: g.category, canvas_width: g.canvasWidth, canvas_height: g.canvasHeight, strokes: valid[0].strokes, alternate_strokes: valid.slice(1).map(v => v.strokes), is_completed: true };
+                  })
+                };
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+                a.download = `${(p.familyName || p.name || 'LineLux').replace(/\s+/g, '_')}.json`;
+                a.click();
+              });
+              showToast(state.lang === 'th' ? `ส่งออกไฟล์ .JSON จำนวน ${chosen.length} ชุดแล้ว` : `Exported ${chosen.length} .JSON file(s)`);
+            } else {
+              chosen.forEach(p => {
+                const b64Data = (p.fontType === 'ttf' && p.ttfBase64) ? p.ttfBase64 : SAMPLE_TTF_B64;
+                const bin = atob(b64Data);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([bytes], { type: 'font/ttf' }));
+                a.download = `${(p.familyName || p.name || 'LineLux').replace(/\s+/g, '_')}.ttf`;
+                a.click();
+              });
+              showToast(state.lang === 'th' ? `ดาวน์โหลดไฟล์ .TTF จำนวน ${chosen.length} ชุดแล้ว` : `Downloaded ${chosen.length} .TTF file(s)`);
+            }
+            close();
+          });
+        };
+        drawExportModal();
+        overlay.classList.remove('hidden');
       }
 
       function openNewProjectModal() {
@@ -1464,7 +1972,7 @@
           const name = document.getElementById('newProjName').value.trim() || `Font ${idx}`;
           const family = document.getElementById('newProjFamily').value.trim().replace(/[^A-Za-z0-9]/g, '') || `LineLux${idx}`;
           const created = createProject(name, family);
-          state.projects.unshift(created); state.activeProjectId = created.id; state.tab = 'studio';
+          state.projects.unshift(created); state.activeProjectId = created.id; state.tab = 'my-fonts'; state.librarySubView = 'studio';
           overlay.classList.add('hidden'); saveState(true); renderAll();
         });
       }
@@ -1488,18 +1996,31 @@
         `).join('');
 
         main.innerHTML = `
-          <div class="max-w-7xl mx-auto space-y-5">
+          <div class="max-w-7xl mx-auto space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <button id="backToLibraryBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#1D1D1F] text-xs font-medium transition-colors">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                <span>${state.lang === 'th' ? 'กลับคลังฟอนต์' : 'Back to Library'}</span>
+              </button>
+              <span class="text-xs text-[#6E6E73] font-medium">${proj.name}</span>
+            </div>
+
             <!-- Ultra-Minimal Sticky Bar -->
             <div class="sticky top-0 z-20 bg-white/95 backdrop-blur rounded-2xl border border-[#E5E5EA] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3">
               <div class="flex flex-wrap items-center gap-1">${catButtons}</div>
-              <div class="flex items-center gap-2.5 text-xs">
+              <div class="flex flex-wrap items-center gap-3 text-xs">
                 <div class="inline-flex rounded-xl bg-[#F5F5F7] p-0.5">
-                  <button id="toolPenBtn" type="button" class="px-2.5 py-1 rounded-lg font-medium ${state.tool === 'pen' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ปากกา' : 'Pen'}</button>
-                  <button id="toolEraserBtn" type="button" class="px-2.5 py-1 rounded-lg font-medium ${state.tool === 'eraser' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ยางลบ' : 'Eraser'}</button>
+                  <button type="button" data-studio-filter="all" class="px-2.5 py-1 rounded-lg font-medium ${state.filterMode === 'all' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ทั้งหมด' : 'All'}</button>
+                  <button type="button" data-studio-filter="todo" class="px-2.5 py-1 rounded-lg font-medium ${state.filterMode === 'todo' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ยังไม่เขียน' : 'Todo'}</button>
+                  <button type="button" data-studio-filter="done" class="px-2.5 py-1 rounded-lg font-medium ${state.filterMode === 'done' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'เขียนแล้ว' : 'Done'}</button>
                 </div>
-                <label class="flex items-center gap-1.5 text-[#6E6E73]">
-                  <span>${state.strokeWidth.toFixed(1)}</span>
-                  <input id="strokeWidthSlider" type="range" min="1.5" max="6.5" step="0.2" value="${state.strokeWidth}" class="w-16" />
+                <label class="flex items-center gap-1.5 text-[#6E6E73]" title="${state.lang === 'th' ? 'ปรับขนาดบอร์ดการวาดให้ตรงกับขนาดลายมือจริง' : 'Adjust writing board size'}">
+                  <span>${state.lang === 'th' ? 'ขนาดช่อง' : 'Board'} <strong id="studioBoardSizeVal" class="text-[#1D1D1F]">${state.cellWidth}px</strong></span>
+                  <input id="studioBoardSizeSlider" type="range" min="60" max="160" step="4" value="${state.cellWidth}" class="w-20" />
+                </label>
+                <label class="flex items-center gap-1.5 text-[#6E6E73]" title="${state.lang === 'th' ? 'ขนาดหัวปากกาทั้งชุดฟอนต์นี้' : 'Uniform pen width for entire font'}">
+                  <span>${state.lang === 'th' ? 'หัวปากกา' : 'Pen'} <strong id="studioStrokeVal" class="text-[#1D1D1F]">${(proj.strokeWidth || 3.2).toFixed(1)}px</strong></span>
+                  <input id="strokeWidthSlider" type="range" min="1.5" max="6.5" step="0.2" value="${proj.strokeWidth || 3.2}" class="w-16" />
                 </label>
               </div>
             </div>
@@ -1511,7 +2032,7 @@
 
         const grid = document.getElementById('characterSheetGrid');
         if (!filtered.length) {
-          grid.innerHTML = `<div class="w-full p-10 text-center rounded-2xl bg-white border border-[#E5E5EA] text-sm text-[#6E6E73]">${state.lang === 'th' ? 'ไม่มีอักขระในตัวกรองนี้ (ปรับตัวกรองได้ในหน้าตั้งค่า)' : 'No characters match filter (adjust in Settings)'}</div>`;
+          grid.innerHTML = `<div class="w-full p-10 text-center rounded-2xl bg-white border border-[#E5E5EA] text-sm text-[#6E6E73]">${state.lang === 'th' ? 'ไม่มีอักขระในตัวกรองนี้' : 'No characters match filter (adjust in Settings)'}</div>`;
         } else {
           filtered.forEach(spec => {
             const card = document.createElement('div');
@@ -1536,340 +2057,745 @@
           });
         }
 
+        document.getElementById('backToLibraryBtn').addEventListener('click', () => {
+          state.librarySubView = 'list';
+          saveState(true);
+          renderAll();
+        });
         main.querySelectorAll('[data-cat]').forEach(btn => btn.addEventListener('click', () => { state.category = btn.getAttribute('data-cat'); saveState(true); renderAll(); }));
-        document.getElementById('toolPenBtn').addEventListener('click', () => { state.tool = 'pen'; renderAll(); });
-        document.getElementById('toolEraserBtn').addEventListener('click', () => { state.tool = 'eraser'; renderAll(); });
-        document.getElementById('strokeWidthSlider').addEventListener('input', (e) => {
-          state.strokeWidth = Number(e.target.value);
-          e.target.previousElementSibling.textContent = state.strokeWidth.toFixed(1);
-          saveState(false);
+        main.querySelectorAll('[data-studio-filter]').forEach(btn => btn.addEventListener('click', () => {
+          state.filterMode = btn.getAttribute('data-studio-filter');
+          saveState(true);
+          renderAll();
+        }));
+        const boardSlider = document.getElementById('studioBoardSizeSlider');
+        boardSlider.addEventListener('input', (e) => {
+          state.cellWidth = Number(e.target.value);
+          document.getElementById('studioBoardSizeVal').textContent = state.cellWidth + 'px';
+        });
+        boardSlider.addEventListener('change', () => {
+          saveState(true);
+          renderAll();
+        });
+        const swSlider = document.getElementById('strokeWidthSlider');
+        swSlider.addEventListener('input', (e) => {
+          const wVal = Number(e.target.value);
+          proj.strokeWidth = wVal;
+          state.strokeWidth = wVal;
+          document.getElementById('studioStrokeVal').textContent = wVal.toFixed(1) + 'px';
+        });
+        swSlider.addEventListener('change', () => {
+          const wVal = proj.strokeWidth || 3.2;
+          Object.values(proj.glyphs || {}).forEach(g => {
+            if (Array.isArray(g.strokes)) g.strokes.forEach(st => { st.width = wVal; });
+            if (Array.isArray(g.instances)) g.instances.forEach(inst => {
+              if (Array.isArray(inst.strokes)) inst.strokes.forEach(st => { st.width = wVal; });
+            });
+          });
+          saveState(true);
+          renderAll();
         });
       }
 
-      // --- 4. Preview (Text Color + Notion Bullet/Number Lists + Pill Highlight + Cross-Project Variation) ---
+      // --- 4. Preview (Left-Right Split View + Direct Rich Editor + Variation Settings Modal) ---
+      function openVariationModal(onUpdated) {
+        const overlay = document.getElementById('modalOverlay');
+        const card = document.getElementById('modalCard');
+
+        const drawModal = () => {
+          const cfg = state.variation[state.varScriptTab];
+          card.innerHTML = `
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-base font-semibold">${state.lang === 'th' ? 'ตั้งค่า Variation & ลายมือ' : 'Variation Settings'}</h3>
+              <button id="closeVarModalBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+
+            <div class="space-y-4 text-xs">
+              <div class="flex items-center justify-between gap-2">
+                <div class="inline-flex rounded-lg bg-[#F5F5F7] p-0.5">
+                  <button id="mVarThai" type="button" class="px-3 py-1 rounded-md font-medium ${state.varScriptTab === 'thai' ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}">ไทย</button>
+                  <button id="mVarEng" type="button" class="px-3 py-1 rounded-md font-medium ${state.varScriptTab === 'english' ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}">EN</button>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button id="mVarRandom" type="button" class="px-3 py-1 rounded-lg bg-[#1D1D1F] text-white font-medium">Randomize</button>
+                  <button id="mVarReset" type="button" class="px-2.5 py-1 rounded-lg border border-[#D2D2D7] hover:bg-[#F5F5F7]">Reset</button>
+                </div>
+              </div>
+
+              <div class="space-y-3">
+                <label class="block space-y-1"><div class="flex justify-between text-[#6E6E73]"><span>${state.lang === 'th' ? 'ขนาดตัวอักษร' : 'Font Size'}</span><strong id="mPvSizeVal" class="text-[#1D1D1F]">${state.previewSize}px</strong></div><input id="mPvSize" type="range" min="22" max="72" value="${state.previewSize}" class="w-full" /></label>
+                <label class="block space-y-1"><div class="flex justify-between text-[#6E6E73]"><span>Intensity</span><strong id="mIntVal" class="text-[#1D1D1F]">${cfg.intensity}%</strong></div><input id="mInt" type="range" min="0" max="100" value="${cfg.intensity}" class="w-full" /></label>
+                <label class="block space-y-1"><div class="flex justify-between text-[#6E6E73]"><span>Size Variation</span><strong id="mSizeVal" class="text-[#1D1D1F]">${cfg.sizeVariation}%</strong></div><input id="mSize" type="range" min="0" max="50" value="${cfg.sizeVariation}" class="w-full" /></label>
+                <label class="block space-y-1"><div class="flex justify-between text-[#6E6E73]"><span>Slant</span><strong id="mSlantVal" class="text-[#1D1D1F]">${cfg.slantAngle}°</strong></div><input id="mSlant" type="range" min="-25" max="25" value="${cfg.slantAngle}" class="w-full" /></label>
+                <label class="block space-y-1"><div class="flex justify-between text-[#6E6E73]"><span>Char Spacing</span><strong id="mCharVal" class="text-[#1D1D1F]">${cfg.charSpacing}%</strong></div><input id="mChar" type="range" min="0" max="50" value="${cfg.charSpacing}" class="w-full" /></label>
+                <label class="block space-y-1"><div class="flex justify-between text-[#6E6E73]"><span>Word Spacing</span><strong id="mWordVal" class="text-[#1D1D1F]">${cfg.wordSpacing}%</strong></div><input id="mWord" type="range" min="0" max="50" value="${cfg.wordSpacing}" class="w-full" /></label>
+              </div>
+
+
+            </div>
+          `;
+          if (window.lucide) window.lucide.createIcons();
+
+          document.getElementById('closeVarModalBtn').addEventListener('click', () => overlay.classList.add('hidden'));
+          document.getElementById('mVarThai').addEventListener('click', () => { state.varScriptTab = 'thai'; drawModal(); });
+          document.getElementById('mVarEng').addEventListener('click', () => { state.varScriptTab = 'english'; drawModal(); });
+          document.getElementById('mVarRandom').addEventListener('click', () => {
+            state.variation.seed = Math.floor(Math.random() * 90000000) + 10000000;
+            saveState(false); onUpdated();
+          });
+          document.getElementById('mVarReset').addEventListener('click', () => {
+            state.variation[state.varScriptTab] = { intensity: 0, sizeVariation: 0, slantAngle: 0, charSpacing: 0, wordSpacing: 0 };
+            saveState(true); drawModal(); onUpdated();
+          });
+          document.getElementById('mPvSize').addEventListener('input', (e) => {
+            state.previewSize = Number(e.target.value);
+            document.getElementById('mPvSizeVal').textContent = state.previewSize + 'px';
+            saveState(false); onUpdated();
+          });
+          const bindM = (id, key, valId, suf) => {
+            document.getElementById(id).addEventListener('input', (e) => {
+              const v = Number(e.target.value);
+              state.variation[state.varScriptTab][key] = v;
+              document.getElementById(valId).textContent = v + suf;
+              if (key === 'slantAngle') getActiveProject().slantAngle = v;
+              saveState(false); onUpdated();
+            });
+          };
+          bindM('mInt', 'intensity', 'mIntVal', '%');
+          bindM('mSize', 'sizeVariation', 'mSizeVal', '%');
+          bindM('mSlant', 'slantAngle', 'mSlantVal', '°');
+          bindM('mChar', 'charSpacing', 'mCharVal', '%');
+          bindM('mWord', 'wordSpacing', 'mWordVal', '%');
+
+          card.querySelectorAll('[data-modal-mix]').forEach(chk => chk.addEventListener('change', (e) => {
+            const pid = chk.getAttribute('data-modal-mix');
+            const set = new Set(Array.isArray(state.mixProjectIds) ? state.mixProjectIds : []);
+            if (e.target.checked) set.add(pid); else set.delete(pid);
+            state.mixProjectIds = Array.from(set);
+            saveState(true); drawModal(); onUpdated();
+          }));
+        };
+
+        drawModal();
+        overlay.classList.remove('hidden');
+      }
+
+      async function renderPdfPageToCanvas(pageNum) {
+        if (!loadedPdfDoc) return;
+        const page = await loadedPdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const off = document.createElement('canvas');
+        off.width = Math.round(viewport.width);
+        off.height = Math.round(viewport.height);
+        await page.render({ canvasContext: off.getContext('2d'), viewport }).promise;
+        loadedPdfBgCanvas = off;
+      }
+
       function renderPreview(main) {
-        const activeFontFamily = state.customLoadedFontFamily || 'SampleThaiHandwriting';
+        if (!state.previewHtml && state.previewText) {
+          state.previewHtml = renderRichTtfHtml(state.previewText, state.previewHighlightColor);
+        }
+        const isPaperMode = Boolean(state.a4PreviewMode || loadedPdfDoc);
+        const curPage = loadedPdfDoc ? loadedPdfPageNum : 1;
 
         main.innerHTML = `
-          <div class="max-w-5xl mx-auto space-y-4">
+          <div class="max-w-7xl mx-auto space-y-4">
+            <!-- Studio Header -->
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <h1 class="text-2xl font-semibold tracking-tight">${state.lang === 'th' ? 'แสดงตัวอย่าง' : 'Preview'}</h1>
-              <div class="inline-flex rounded-xl bg-white p-1 border border-[#E5E5EA] text-xs">
-                <button id="modeSimBtn" type="button" class="px-3 py-1.5 rounded-lg font-medium ${state.previewMode === 'editor_simulated' ? 'bg-[#1D1D1F] text-white' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ลายมือที่วาด' : 'Drawn Fonts'}</button>
-                <button id="modeRealBtn" type="button" class="px-3 py-1.5 rounded-lg font-medium ${state.previewMode === 'real_ttf' ? 'bg-[#1D1D1F] text-white' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ไฟล์ .TTF' : '.TTF File'}</button>
+              <h1 class="text-2xl font-semibold tracking-tight">${state.lang === 'th' ? 'สตูดิโอ' : 'Studio'}</h1>
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#1D1D1F] text-xs font-medium">
+                  <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+                  <span>${loadedPdfDoc ? (state.lang === 'th' ? 'เปลี่ยน PDF' : 'Change PDF') : (state.lang === 'th' ? 'นำเข้า PDF' : 'Import PDF')}</span>
+                  <input id="importPdfInput" type="file" accept="application/pdf,.pdf" class="hidden" />
+                </label>
+                ${loadedPdfDoc ? `<button id="clearPdfBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-white border border-[#E5E5EA] hover:text-red-600 text-xs">${state.lang === 'th' ? 'ปิด PDF' : 'Close PDF'}</button>` : ''}
+                <button id="addTextboxBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#E5E5EA] hover:border-[#1D1D1F] text-xs font-medium">
+                  <i data-lucide="type" class="w-3.5 h-3.5"></i>
+                  <span>+ Textbox</span>
+                </button>
+                <button id="openVarModalBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium hover:bg-black">
+                  <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+                  <span>Variation</span>
+                </button>
               </div>
             </div>
 
-            <!-- Notion-like Formatting Bar: Bullet, Number, Pill Highlight, Text Color, Highlight Color -->
-            <div class="bg-white rounded-2xl border border-[#E5E5EA] p-3 space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-3 text-xs pb-2.5 border-b border-[#F2F2F7]">
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <button id="fmtBulletBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium" title="Bullet List (- )">
-                    <i data-lucide="list" class="w-3.5 h-3.5"></i><span>Bullet</span>
-                  </button>
-                  <button id="fmtNumberBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium" title="Numbered List (1. )">
-                    <i data-lucide="list-ordered" class="w-3.5 h-3.5"></i><span>Number</span>
-                  </button>
-                  <button id="fmtHighlightBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium" title="Highlight Selection (==text==)">
-                    <i data-lucide="highlighter" class="w-3.5 h-3.5"></i><span>${state.lang === 'th' ? 'ไฮไลท์' : 'Highlight'}</span>
-                  </button>
-                </div>
+            <!-- Split View (or Full A4 / PDF Paper View) -->
+            <div class="grid grid-cols-1 ${isPaperMode ? '' : 'lg:grid-cols-12'} gap-4 items-stretch">
+              <!-- LEFT: Compact Rich Editor with Compact Color Popovers -->
+              <div class="${isPaperMode ? 'hidden' : 'lg:col-span-4'} bg-white rounded-2xl border border-[#E5E5EA] flex flex-col min-h-[460px]">
+                <div class="relative px-3 py-2.5 border-b border-[#F2F2F7] flex items-center justify-between gap-2 text-xs">
+                  <div class="flex items-center gap-1">
+                    <button id="fmtBulletBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]" title="Bullet List"><i data-lucide="list" class="w-4 h-4"></i></button>
+                    <button id="fmtNumberBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]" title="Numbered List"><i data-lucide="list-ordered" class="w-4 h-4"></i></button>
+                  </div>
 
-                <div class="flex flex-wrap items-center gap-4">
-                  <!-- Text Color Swatches -->
+                  <!-- Compact Color Popover Triggers -->
                   <div class="flex items-center gap-1.5">
-                    <span class="text-[#8E8E93]">${state.lang === 'th' ? 'สีอักษร' : 'Ink'}</span>
-                    ${TEXT_COLORS.map(c => `<button type="button" data-text-color="${c}" class="w-4 h-4 rounded-full border ${state.previewTextColor === c ? 'ring-2 ring-offset-1 ring-[#1D1D1F]' : 'border-black/10'}" style="background:${c};"></button>`).join('')}
-                    <input id="customTextColor" type="color" value="${state.previewTextColor}" class="w-5 h-5 rounded cursor-pointer border-0 bg-transparent" title="Custom Text Color" />
+                    <div class="relative">
+                      <button id="textColorPopBtn" type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[#F2F2F7] font-semibold" title="${state.lang === 'th' ? 'สีตัวอักษร' : 'Text Color'}">
+                        <span style="color:${state.previewTextColor}; border-bottom: 2.5px solid ${state.previewTextColor};" class="leading-none text-sm px-0.5">A</span>
+                        <i data-lucide="chevron-down" class="w-3 h-3 text-[#8E8E93]"></i>
+                      </button>
+                      <div id="textColorPopover" class="hidden absolute right-0 top-9 z-40 w-56 p-3.5 rounded-2xl bg-white/98 backdrop-blur-md border border-[#E5E5EA] shadow-[0_12px_32px_rgba(0,0,0,0.12)] space-y-2.5">
+                        <div class="text-[11px] font-medium text-[#8E8E93]">${state.lang === 'th' ? 'สีตัวอักษร' : 'Text Color'}</div>
+                        <div class="grid grid-cols-5 gap-2">
+                          ${PALETTE_TEXT_COLORS.map(c => `<button type="button" data-text-color="${c.hex}" title="${c.name}" class="w-6 h-6 rounded-full border transition-transform hover:scale-110 ${state.previewTextColor === c.hex ? 'ring-2 ring-offset-1 ring-[#1D1D1F]' : 'border-black/10'}" style="background:${c.hex};"></button>`).join('')}
+                        </div>
+                        <button id="toggleCustomTextColor" type="button" class="w-full flex items-center justify-between pt-2 border-t border-[#F2F2F7] text-[11px] text-[#6E6E73] hover:text-[#1D1D1F]">
+                          <span>${state.lang === 'th' ? 'กำหนดสีเอง' : 'Custom'}</span>
+                          <span class="inline-block w-5 h-5 rounded-full border border-black/15 shrink-0 shadow-inner" style="background:conic-gradient(from 0deg,#ff3b30,#ff9500,#ffcc00,#34c759,#007aff,#af52de,#ff2d55,#ff3b30);"></span>
+                        </button>
+                        <div id="customTextColorPanel" class="hidden"></div>
+                      </div>
+                    </div>
+
+                    <div class="relative">
+                      <button id="hlColorPopBtn" type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[#F2F2F7]" title="${state.lang === 'th' ? 'ไฮไลท์ (Pill)' : 'Highlight'}">
+                        <span class="w-4 h-4 rounded-full border border-black/10 inline-block" style="background:${state.previewHighlightColor};"></span>
+                        <i data-lucide="highlighter" class="w-3.5 h-3.5 text-[#424245]"></i>
+                      </button>
+                      <div id="hlColorPopover" class="hidden absolute right-0 top-9 z-40 w-56 p-3.5 rounded-2xl bg-white/98 backdrop-blur-md border border-[#E5E5EA] shadow-[0_12px_32px_rgba(0,0,0,0.12)] space-y-2.5">
+                        <div class="flex items-center justify-between">
+                          <span class="text-[11px] font-medium text-[#8E8E93]">${state.lang === 'th' ? 'สีไฮไลท์' : 'Highlight'}</span>
+                          <button id="fmtHighlightBtn" type="button" class="text-[11px] px-2.5 py-0.5 rounded-lg bg-[#1D1D1F] text-white font-medium hover:bg-black">${state.lang === 'th' ? 'ใช้ไฮไลท์' : 'Apply'}</button>
+                        </div>
+                        <div class="grid grid-cols-5 gap-2">
+                          ${PALETTE_HL_COLORS.map(c => `<button type="button" data-hl-color="${c.hex}" title="${c.name}" class="w-6 h-6 rounded-full border transition-transform hover:scale-110 ${state.previewHighlightColor === c.hex ? 'ring-2 ring-offset-1 ring-[#1D1D1F]' : 'border-black/10'}" style="background:${c.hex};"></button>`).join('')}
+                        </div>
+                        <button id="toggleCustomHlColor" type="button" class="w-full flex items-center justify-between pt-2 border-t border-[#F2F2F7] text-[11px] text-[#6E6E73] hover:text-[#1D1D1F]">
+                          <span>${state.lang === 'th' ? 'กำหนดสีเอง' : 'Custom'}</span>
+                          <span class="inline-block w-5 h-5 rounded-full border border-black/15 shrink-0 shadow-inner" style="background:conic-gradient(from 0deg,#ff3b30,#ff9500,#ffcc00,#34c759,#007aff,#af52de,#ff2d55,#ff3b30);"></span>
+                        </button>
+                        <div id="customHlColorPanel" class="hidden"></div>
+                      </div>
+                    </div>
                   </div>
-                  <!-- Pill Highlight Color Swatches -->
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-[#8E8E93]">${state.lang === 'th' ? 'สีไฮไลท์' : 'Highlight'}</span>
-                    ${HIGHLIGHT_COLORS.map(c => `<button type="button" data-hl-color="${c}" class="w-4 h-4 rounded-full border ${state.previewHighlightColor === c ? 'ring-2 ring-offset-1 ring-[#1D1D1F]' : 'border-black/10'}" style="background:${c};"></button>`).join('')}
-                    <input id="customHlColor" type="color" value="${state.previewHighlightColor}" class="w-5 h-5 rounded cursor-pointer border-0 bg-transparent" title="Custom Highlight Color" />
+                </div>
+
+                <div
+                  id="richPreviewEditor"
+                  contenteditable="true"
+                  spellcheck="false"
+                  data-placeholder="${state.lang === 'th' ? 'พิมพ์ข้อความที่นี่...' : 'Type here...'}"
+                  class="rich-editor flex-1 p-5 text-[15px] leading-relaxed focus:outline-none overflow-y-auto"
+                  style="color:${state.previewTextColor};"
+                >${state.previewHtml}</div>
+              </div>
+
+              <!-- RIGHT: Live Handwriting Output / A4 Paper / PDF Form Overlay -->
+              <div class="${isPaperMode ? 'w-full' : 'lg:col-span-8'} bg-white rounded-2xl border border-[#E5E5EA] flex flex-col overflow-hidden min-h-[460px]">
+                <div class="px-4 py-2.5 border-b border-[#F2F2F7] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#8E8E93]">
+                  <div class="flex items-center gap-2">
+                    <span id="varDiagText">LineLux Studio</span>
+                    ${loadedPdfDoc ? `
+                      <span class="px-2 py-0.5 rounded-md bg-[#F5F5F7] text-[#1D1D1F] font-medium">${loadedPdfName} (${loadedPdfPageNum}/${loadedPdfPageCount})</span>
+                      ${loadedPdfPageCount > 1 ? `<button id="pdfPrevBtn" type="button" class="px-1.5 py-0.5 rounded border border-[#D2D2D7]">‹</button><button id="pdfNextBtn" type="button" class="px-1.5 py-0.5 rounded border border-[#D2D2D7]">›</button>` : ''}
+                    ` : ''}
+                  </div>
+                  <div class="flex items-center gap-2.5">
+                    ${!loadedPdfDoc ? `
+                      <button id="toggleA4PreviewBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${state.a4PreviewMode ? 'bg-[#1D1D1F] text-white border-[#1D1D1F]' : 'bg-[#F5F5F7] text-[#1D1D1F] border-[#E5E5EA] hover:border-[#1D1D1F]'}">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                        <span>${state.a4PreviewMode ? (state.lang === 'th' ? 'กลับโหมดแก้ไข' : 'Exit A4') : 'Preview A4'}</span>
+                      </button>` : ''}
+                    <button id="downloadSpecimenBtn" type="button" class="text-[#1D1D1F] font-medium hover:underline">${state.lang === 'th' ? 'บันทึก PNG' : 'Save PNG'}</button>
+                  </div>
+                </div>
+                <div class="flex-1 overflow-y-auto ${isPaperMode ? 'bg-[#EAEAEF] p-5 sm:p-8 flex justify-center' : ''}">
+                  <div id="paperStage" class="relative ${isPaperMode ? 'w-full max-w-[794px] bg-white shadow-md border border-[#DCDCE2] rounded-sm overflow-hidden' : 'w-full'}">
+                    <canvas id="thaiPreviewCanvas" class="block"></canvas>
+                    <!-- Interactive Draggable Textbox Handles Overlay -->
+                    <div id="textboxOverlayLayer" class="absolute inset-0 pointer-events-none"></div>
                   </div>
                 </div>
               </div>
-
-              <textarea id="previewInput" rows="4" placeholder="${state.lang === 'th' ? 'พิมพ์ข้อความ... (พิมพ์ - เพื่อทำ Bullet, 1. เพื่อทำ Number List, หรือเลือกคำแล้วกด ไฮไลท์)' : 'Type here... (- for bullet, 1. for numbered list, ==text== for pill highlight)'}" class="w-full text-sm focus:outline-none resize-y bg-transparent">${state.previewText}</textarea>
             </div>
-
-            <!-- Compact Variation & Typography Controls -->
-            <div class="bg-white rounded-2xl border border-[#E5E5EA] p-4 space-y-3 text-xs">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                  <span class="font-semibold">Variation</span>
-                  <div class="inline-flex rounded-lg bg-[#F5F5F7] p-0.5">
-                    <button id="varTabThai" type="button" class="px-2.5 py-1 rounded-md font-medium ${state.varScriptTab === 'thai' ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}">ไทย</button>
-                    <button id="varTabEng" type="button" class="px-2.5 py-1 rounded-md font-medium ${state.varScriptTab === 'english' ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}">EN</button>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button id="varRandomBtn" type="button" class="px-3 py-1 rounded-lg bg-[#1D1D1F] text-white font-medium">Randomize</button>
-                  <button id="varResetBtn" type="button" class="px-2.5 py-1 rounded-lg border border-[#D2D2D7] hover:bg-[#F5F5F7]">Reset</button>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <label class="space-y-1"><span class="text-[#6E6E73]">${state.lang === 'th' ? 'ขนาด' : 'Size'} <strong id="pvSizeVal">${state.previewSize}</strong></span><input id="pvSizeSlider" type="range" min="22" max="72" value="${state.previewSize}" class="w-full" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Intensity <strong id="vIntVal">${state.variation[state.varScriptTab].intensity}%</strong></span><input id="vIntSlider" type="range" min="0" max="100" value="${state.variation[state.varScriptTab].intensity}" class="w-full" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Size Var <strong id="vSizeVal">${state.variation[state.varScriptTab].sizeVariation}%</strong></span><input id="vSizeSlider" type="range" min="0" max="50" value="${state.variation[state.varScriptTab].sizeVariation}" class="w-full" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Slant <strong id="vSlantVal">${state.variation[state.varScriptTab].slantAngle}°</strong></span><input id="vSlantSlider" type="range" min="-25" max="25" value="${state.variation[state.varScriptTab].slantAngle}" class="w-full" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Char <strong id="vCharVal">${state.variation[state.varScriptTab].charSpacing}%</strong></span><input id="vCharSlider" type="range" min="0" max="50" value="${state.variation[state.varScriptTab].charSpacing}" class="w-full" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Word <strong id="vWordVal">${state.variation[state.varScriptTab].wordSpacing}%</strong></span><input id="vWordSlider" type="range" min="0" max="50" value="${state.variation[state.varScriptTab].wordSpacing}" class="w-full" /></label>
-              </div>
-
-              ${state.previewMode === 'editor_simulated' && state.projects.length > 1 ? `
-                <div class="pt-2.5 border-t border-[#F2F2F7] flex flex-wrap items-center gap-2">
-                  <span class="text-[#6E6E73]">${state.lang === 'th' ? 'ผสมลายมือจากโปรเจกต์:' : 'Mix projects:'}</span>
-                  ${state.projects.map(p => {
-                    const isPrimary = p.id === getActiveProject().id;
-                    const checked = isPrimary || (Array.isArray(state.mixProjectIds) && state.mixProjectIds.includes(p.id));
-                    return `<label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border cursor-pointer ${checked ? 'bg-[#1D1D1F] text-white border-[#1D1D1F]' : 'bg-[#F5F5F7] text-[#424245] border-[#E5E5EA]'}">
-                      <input type="checkbox" data-mix-proj="${p.id}" ${checked ? 'checked' : ''} ${isPrimary ? 'disabled' : ''} class="hidden" />
-                      <span>${p.name}</span>
-                    </label>`;
-                  }).join('')}
-                </div>
-              ` : ''}
-            </div>
-
-            <!-- Live Preview Surface -->
-            ${state.previewMode === 'real_ttf' ? `
-              <div class="rounded-2xl border border-[#E5E5EA] bg-white overflow-hidden">
-                <div class="px-4 py-2.5 border-b border-[#F2F2F7] flex items-center justify-between text-xs text-[#6E6E73]">
-                  <span>${state.customLoadedFontName || 'SampleThaiHandwriting-Regular.ttf'}</span>
-                  <label class="cursor-pointer text-[#1D1D1F] font-medium hover:underline">
-                    ${state.lang === 'th' ? 'อัปโหลด .TTF' : 'Upload .TTF'}
-                    <input id="loadLocalTtfInput" type="file" accept=".ttf,.otf" class="hidden" />
-                  </label>
-                </div>
-                <div id="realTtfBox" class="p-7 min-h-[260px] break-words space-y-1" style="font-family:'${activeFontFamily}', 'Noto Sans Thai', sans-serif;"></div>
-              </div>
-            ` : `
-              <div class="rounded-2xl border border-[#E5E5EA] bg-white overflow-hidden">
-                <div class="px-4 py-2.5 border-b border-[#F2F2F7] flex items-center justify-between text-[11px] text-[#6E6E73]">
-                  <span id="varDiagText">LineLux Variation Preview</span>
-                  <button id="downloadSpecimenBtn" type="button" class="text-[#1D1D1F] font-medium hover:underline">${state.lang === 'th' ? 'บันทึก PNG' : 'Save PNG'}</button>
-                </div>
-                <canvas id="thaiPreviewCanvas" class="w-full block"></canvas>
-              </div>
-            `}
           </div>
         `;
 
-        const inputEl = document.getElementById('previewInput');
+        const editorEl = document.getElementById('richPreviewEditor');
+        const overlayLayer = document.getElementById('textboxOverlayLayer');
+
+        const renderTextboxHandles = () => {
+          if (!overlayLayer) return;
+          const cv = document.getElementById('thaiPreviewCanvas');
+          const cw = cv ? (parseFloat(cv.style.width) || cv.clientWidth || 720) : 720;
+          const ch = cv ? (parseFloat(cv.style.height) || cv.clientHeight || 420) : 420;
+          const boxes = (state.textboxes || []).filter(tb => (tb.page || 1) === curPage);
+
+          overlayLayer.innerHTML = boxes.map(tb => {
+            const isEditing = tb.id === activeEditingTextboxId;
+            const leftPx = Math.round((tb.xRatio || 0.1) * cw);
+            const topPx = Math.round((tb.yRatio || 0.1) * ch);
+            const fSize = tb.fontSize || 28;
+            return `
+            <div data-tb-wrap="${tb.id}" style="left:${leftPx}px; top:${topPx}px; min-width:120px; max-width:${Math.max(160, cw - leftPx - 12)}px;" class="pointer-events-auto absolute group">
+              <!-- Compact Floating Bar on Hover / Focus -->
+              <div class="${isEditing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity flex items-center gap-1 -mt-8 mb-1 w-max bg-white/95 backdrop-blur-md border border-[#E5E5EA] rounded-full px-2 py-1 shadow-[0_4px_16px_rgba(0,0,0,0.08)] text-[11px]">
+                <span data-tb-drag="${tb.id}" class="cursor-move px-1 text-[#8E8E93] hover:text-[#1D1D1F] select-none" title="ลากย้าย">⋮⋮</span>
+                <button type="button" data-tb-dec="${tb.id}" class="w-5 h-5 flex items-center justify-center hover:bg-[#F2F2F7] rounded-full text-[#424245]" title="ลดขนาด">−</button>
+                <span class="font-mono text-[10px] text-[#424245] min-w-[18px] text-center">${fSize}</span>
+                <button type="button" data-tb-inc="${tb.id}" class="w-5 h-5 flex items-center justify-center hover:bg-[#F2F2F7] rounded-full text-[#424245]" title="เพิ่มขนาด">+</button>
+                <div class="h-3.5 w-px bg-[#E5E5EA] mx-0.5"></div>
+                <div class="relative">
+                  <button type="button" data-tb-col-toggle="${tb.id}" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full hover:bg-[#F2F2F7]" title="${state.lang === 'th' ? 'สีตัวอักษร' : 'Text Color'}">
+                    <span data-tb-dot="${tb.id}" class="w-3.5 h-3.5 rounded-full border border-black/15 inline-block" style="background:${tb.color || '#1D1D1F'};"></span>
+                    <span class="text-[9px] text-[#8E8E93] leading-none">▾</span>
+                  </button>
+                  <div data-tb-col-pop="${tb.id}" class="hidden absolute left-0 top-8 z-50 w-56 p-3.5 rounded-2xl bg-white/98 backdrop-blur-md border border-[#E5E5EA] shadow-[0_12px_32px_rgba(0,0,0,0.12)] space-y-2.5">
+                    <div class="text-[11px] font-medium text-[#8E8E93]">${state.lang === 'th' ? 'สีตัวอักษร' : 'Text Color'}</div>
+                    <div class="grid grid-cols-5 gap-2">
+                      ${PALETTE_TEXT_COLORS.map(c => `<button type="button" data-tb-col="${tb.id}|${c.hex}" title="${c.name}" class="w-6 h-6 rounded-full border transition-transform hover:scale-110 ${(tb.color || '#1D1D1F') === c.hex ? 'ring-2 ring-offset-1 ring-[#1D1D1F]' : 'border-black/10'}" style="background:${c.hex};"></button>`).join('')}
+                    </div>
+                    <button type="button" data-tb-custom-toggle="${tb.id}" class="w-full flex items-center justify-between pt-2 border-t border-[#F2F2F7] text-[11px] text-[#6E6E73] hover:text-[#1D1D1F]">
+                      <span>${state.lang === 'th' ? 'กำหนดสีเอง' : 'Custom'}</span>
+                      <span class="inline-block w-5 h-5 rounded-full border border-black/15 shrink-0 shadow-inner" style="background:conic-gradient(from 0deg,#ff3b30,#ff9500,#ffcc00,#34c759,#007aff,#af52de,#ff2d55,#ff3b30);"></span>
+                    </button>
+                    <div data-tb-custom-panel="${tb.id}" class="hidden"></div>
+                  </div>
+                </div>
+                <button type="button" data-tb-del="${tb.id}" class="w-5 h-5 flex items-center justify-center rounded-full text-[#8E8E93] hover:text-red-600 hover:bg-red-50" title="ลบกล่อง">✕</button>
+              </div>
+              <!-- Direct Word-style Editable Area -->
+              <div
+                contenteditable="true"
+                spellcheck="false"
+                data-tb-input="${tb.id}"
+                data-placeholder="${state.lang === 'th' ? 'พิมพ์ข้อความที่นี่...' : 'Type here...'}"
+                style="font-size:${fSize}px; color:transparent; caret-color:${tb.color || '#1D1D1F'}; line-height:1.45; min-height:${Math.round(fSize * 1.45)}px;"
+                class="rounded-lg px-1 py-0.5 outline-none whitespace-pre-wrap break-words bg-transparent ${isEditing ? 'border border-dashed border-[#1D1D1F]/50' : 'border border-transparent hover:border-dashed hover:border-[#A1A1AA] cursor-text'}"
+              >${(tb.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>
+            </div>`;
+          }).join('');
+
+          overlayLayer.querySelectorAll('[data-tb-input]').forEach(el => {
+            const id = el.getAttribute('data-tb-input');
+            const tb = (state.textboxes || []).find(t => t.id === id);
+            if (!tb) return;
+            el.addEventListener('focus', () => {
+              activeEditingTextboxId = id;
+              el.classList.add('border-dashed', 'border-[#1D1D1F]/50');
+              el.classList.remove('border-transparent');
+            });
+            el.addEventListener('input', () => {
+              tb.text = el.innerText.replace(/->/g, '→');
+              saveState(false);
+              // Realtime handwriting redraw on every single keystroke!
+              const cv2 = document.getElementById('thaiPreviewCanvas');
+              if (cv2) renderVariationPreviewCanvas(cv2, loadedPdfDoc ? [] : extractRichLinesFromEditor(editorEl), state.previewSize, state.previewLineHeight, state.previewSpacing);
+            });
+            el.addEventListener('blur', () => {
+              tb.text = el.innerText.replace(/->/g, '→');
+              activeEditingTextboxId = null;
+              saveState(true);
+              syncRender();
+            });
+          });
+
+          overlayLayer.querySelectorAll('[data-tb-dec]').forEach(btn => btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const tb = (state.textboxes || []).find(t => t.id === btn.getAttribute('data-tb-dec'));
+            if (tb) { tb.fontSize = Math.max(12, (tb.fontSize || state.lastTextboxFontSize || 28) - 2); state.lastTextboxFontSize = tb.fontSize; saveState(true); syncRender(); }
+          }));
+          overlayLayer.querySelectorAll('[data-tb-inc]').forEach(btn => btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const tb = (state.textboxes || []).find(t => t.id === btn.getAttribute('data-tb-inc'));
+            if (tb) { tb.fontSize = Math.min(72, (tb.fontSize || state.lastTextboxFontSize || 28) + 2); state.lastTextboxFontSize = tb.fontSize; saveState(true); syncRender(); }
+          }));
+          overlayLayer.querySelectorAll('[data-tb-col-toggle]').forEach(btn => btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = btn.getAttribute('data-tb-col-toggle');
+            overlayLayer.querySelectorAll('[data-tb-col-pop]').forEach(p => {
+              if (p.getAttribute('data-tb-col-pop') === id) p.classList.toggle('hidden');
+              else p.classList.add('hidden');
+            });
+          }));
+          overlayLayer.querySelectorAll('[data-tb-col]').forEach(btn => btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const [id, hex] = btn.getAttribute('data-tb-col').split('|');
+            const tb = (state.textboxes || []).find(t => t.id === id);
+            if (tb) { tb.color = hex; saveState(true); syncRender(); }
+          }));
+          overlayLayer.querySelectorAll('[data-tb-custom-toggle]').forEach(btn => btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = btn.getAttribute('data-tb-custom-toggle');
+            const panel = overlayLayer.querySelector(`[data-tb-custom-panel="${id}"]`);
+            const tb = (state.textboxes || []).find(t => t.id === id);
+            if (!panel || !tb) return;
+            const willOpen = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden');
+            if (willOpen) {
+              mountSleekColorPicker(panel, tb.color || '#1D1D1F', (hex) => {
+                tb.color = hex;
+                const dot = overlayLayer.querySelector(`[data-tb-dot="${id}"]`);
+                if (dot) dot.style.background = hex;
+                const inpEl = overlayLayer.querySelector(`[data-tb-input="${id}"]`);
+                if (inpEl) inpEl.style.caretColor = hex;
+                const cv2 = document.getElementById('thaiPreviewCanvas');
+                if (cv2) renderVariationPreviewCanvas(cv2, loadedPdfDoc ? [] : extractRichLinesFromEditor(editorEl), state.previewSize, state.previewLineHeight, state.previewSpacing);
+              }, () => {
+                saveState(true);
+              });
+            }
+          }));
+          overlayLayer.querySelectorAll('[data-tb-del]').forEach(btn => btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const id = btn.getAttribute('data-tb-del');
+            if (activeEditingTextboxId === id) activeEditingTextboxId = null;
+            state.textboxes = (state.textboxes || []).filter(t => t.id !== id);
+            saveState(true); syncRender();
+          }));
+
+          overlayLayer.querySelectorAll('[data-tb-drag]').forEach(handle => {
+            handle.addEventListener('pointerdown', (e) => {
+              e.preventDefault();
+              const id = handle.getAttribute('data-tb-drag');
+              const tb = (state.textboxes || []).find(t => t.id === id);
+              if (!tb || !cv) return;
+              const startX = e.clientX, startY = e.clientY;
+              const origX = tb.xRatio, origY = tb.yRatio;
+              const rect = cv.getBoundingClientRect();
+              const onMove = (ev) => {
+                tb.xRatio = Math.max(0.02, Math.min(0.88, origX + (ev.clientX - startX) / Math.max(rect.width, 1)));
+                tb.yRatio = Math.max(0.04, Math.min(0.92, origY + (ev.clientY - startY) / Math.max(rect.height, 1)));
+                syncRender();
+              };
+              const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                saveState(true);
+              };
+              window.addEventListener('pointermove', onMove);
+              window.addEventListener('pointerup', onUp);
+            });
+          });
+        };
+
         const syncRender = () => {
-          if (state.previewMode === 'real_ttf') {
-            const box = document.getElementById('realTtfBox');
-            if (box) {
-              const slant = state.variation[state.varScriptTab].slantAngle || 0;
-              box.innerHTML = renderRichTtfHtml(state.previewText, state.previewHighlightColor);
-              box.style.color = state.previewTextColor;
-              box.style.fontSize = state.previewSize + 'px';
-              box.style.lineHeight = String(state.previewLineHeight);
-              box.style.letterSpacing = state.previewSpacing + 'px';
-              box.style.transform = slant ? `skewX(${-slant}deg)` : 'none';
-              box.style.transformOrigin = 'left bottom';
-            }
-          } else {
-            const cv = document.getElementById('thaiPreviewCanvas');
-            if (cv) {
-              const items = renderVariationPreviewCanvas(cv, state.previewText, state.previewSize, state.previewLineHeight, state.previewSpacing);
-              const diag = document.getElementById('varDiagText');
-              if (diag && items) {
-                const glyphs = items.filter(it => it.type === 'glyph');
-                const altUsed = glyphs.filter(it => it.instanceIndex > 0).length;
-                const usedProjs = new Set(glyphs.filter(it => it.strokes && it.sourceProjectId).map(it => it.sourceProjectId)).size;
-                diag.textContent = `Seed ${state.variation.seed} · Projects: ${usedProjs}/${getPreviewSourceProjects(getActiveProject()).length} · Alternates: ${altUsed}/${glyphs.length}`;
-              }
-            }
+          const cv = document.getElementById('thaiPreviewCanvas');
+          if (!cv || !editorEl) return;
+          // In PDF overlay mode, hide main editor prose on the PDF unless user wants it (use Textboxes for PDF form filling!)
+          const richLines = loadedPdfDoc ? [] : extractRichLinesFromEditor(editorEl);
+          const items = renderVariationPreviewCanvas(cv, richLines, state.previewSize, state.previewLineHeight, state.previewSpacing);
+          renderTextboxHandles();
+          const diag = document.getElementById('varDiagText');
+          if (diag && items) {
+            const glyphs = items.filter(it => it.type === 'glyph');
+            const altUsed = glyphs.filter(it => it.instanceIndex > 0).length;
+            diag.textContent = loadedPdfDoc
+              ? `PDF Form · ${(state.textboxes || []).filter(t => (t.page || 1) === curPage).length} Textbox`
+              : `Seed ${state.variation.seed} · Alternates ${altUsed}/${glyphs.length}`;
           }
         };
         syncRender();
 
-        // Notion-style Auto-Continue Lists on Enter
-        inputEl.addEventListener('keydown', (e) => {
-          if (e.key !== 'Enter') return;
-          const pos = inputEl.selectionStart;
-          const before = inputEl.value.slice(0, pos);
-          const lineStart = before.lastIndexOf('\n') + 1;
-          const currentLine = before.slice(lineStart);
-          const bMatch = currentLine.match(/^(\s*[-*]\s+)(.*)$/);
-          const nMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
-          if (bMatch && bMatch[2].trim() !== '') {
-            e.preventDefault();
-            const ins = '\n' + bMatch[1];
-            inputEl.value = before + ins + inputEl.value.slice(inputEl.selectionEnd);
-            inputEl.selectionStart = inputEl.selectionEnd = pos + ins.length;
-            state.previewText = inputEl.value; saveState(false); syncRender();
-          } else if (nMatch && nMatch[3].trim() !== '') {
-            e.preventDefault();
-            const ins = `\n${nMatch[1]}${Number(nMatch[2]) + 1}. `;
-            inputEl.value = before + ins + inputEl.value.slice(inputEl.selectionEnd);
-            inputEl.selectionStart = inputEl.selectionEnd = pos + ins.length;
-            state.previewText = inputEl.value; saveState(false); syncRender();
-          }
-        });
-
-        inputEl.addEventListener('input', (e) => { state.previewText = e.target.value; saveState(false); syncRender(); });
-
-        // Bullet / Number / Pill Highlight Toolbar Buttons
-        const prefixCurrentLine = (prefix) => {
-          const start = inputEl.selectionStart;
-          const val = inputEl.value;
-          const lineStart = val.lastIndexOf('\n', start - 1) + 1;
-          inputEl.value = val.slice(0, lineStart) + prefix + val.slice(lineStart);
-          inputEl.selectionStart = inputEl.selectionEnd = start + prefix.length;
-          inputEl.focus();
-          state.previewText = inputEl.value; saveState(false); syncRender();
+        const saveEditorHtml = () => {
+          state.previewHtml = editorEl.innerHTML;
+          saveState(false);
+          syncRender();
         };
-        document.getElementById('fmtBulletBtn').addEventListener('click', () => prefixCurrentLine('- '));
-        document.getElementById('fmtNumberBtn').addEventListener('click', () => prefixCurrentLine('1. '));
-        document.getElementById('fmtHighlightBtn').addEventListener('click', () => {
-          const s0 = inputEl.selectionStart, s1 = inputEl.selectionEnd;
-          const val = inputEl.value;
-          if (s1 > s0) {
-            const sel = val.slice(s0, s1);
-            const wrapped = sel.startsWith('==') && sel.endsWith('==') ? sel.slice(2, -2) : `==${sel}==`;
-            inputEl.value = val.slice(0, s0) + wrapped + val.slice(s1);
-            inputEl.selectionStart = s0; inputEl.selectionEnd = s0 + wrapped.length;
-          } else {
-            const ins = '==ข้อความไฮไลท์==';
-            inputEl.value = val.slice(0, s0) + ins + val.slice(s1);
-            inputEl.selectionStart = s0 + 2; inputEl.selectionEnd = s0 + ins.length - 2;
+
+        editorEl.addEventListener('input', () => {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount && sel.anchorNode && sel.anchorNode.nodeType === 3) {
+            const node = sel.anchorNode;
+            const offset = sel.anchorOffset;
+            const txt = node.nodeValue || '';
+            if (offset >= 2 && txt.slice(offset - 2, offset) === '->') {
+              node.nodeValue = txt.slice(0, offset - 2) + '→' + txt.slice(offset);
+              const r = document.createRange(); r.setStart(node, offset - 1); r.collapse(true);
+              sel.removeAllRanges(); sel.addRange(r);
+            }
           }
-          inputEl.focus();
-          state.previewText = inputEl.value; saveState(false); syncRender();
+          saveEditorHtml();
         });
 
-        // Color Swatches & Pickers
+        editorEl.addEventListener('keyup', (e) => {
+          if (e.key !== ' ') return;
+          const sel = window.getSelection();
+          if (!sel || !sel.rangeCount) return;
+          const node = sel.anchorNode;
+          if (!node || node.nodeType !== 3) return;
+          const txt = node.nodeValue || '';
+          if (txt === '- ' || txt === '* ') {
+            node.nodeValue = ''; document.execCommand('insertUnorderedList'); saveEditorHtml();
+          } else if (/^1\. $/.test(txt)) {
+            node.nodeValue = ''; document.execCommand('insertOrderedList'); saveEditorHtml();
+          }
+        });
+
+        document.getElementById('fmtBulletBtn').addEventListener('click', () => { editorEl.focus(); document.execCommand('insertUnorderedList'); saveEditorHtml(); });
+        document.getElementById('fmtNumberBtn').addEventListener('click', () => { editorEl.focus(); document.execCommand('insertOrderedList'); saveEditorHtml(); });
+
+        // Color Popovers Toggle
+        const tcPop = document.getElementById('textColorPopover');
+        const hlPop = document.getElementById('hlColorPopover');
+        document.getElementById('textColorPopBtn').addEventListener('click', (e) => {
+          e.stopPropagation(); hlPop.classList.add('hidden'); tcPop.classList.toggle('hidden');
+        });
+        document.getElementById('hlColorPopBtn').addEventListener('click', (e) => {
+          e.stopPropagation(); tcPop.classList.add('hidden'); hlPop.classList.toggle('hidden');
+        });
+
+        const applyHighlightSelection = (color) => {
+          editorEl.focus();
+          const sel = window.getSelection();
+          if (!sel || !sel.rangeCount || sel.isCollapsed || !editorEl.contains(sel.anchorNode)) {
+            showToast(state.lang === 'th' ? 'คลุมข้อความก่อนกดไฮไลท์' : 'Select text first');
+            return;
+          }
+          const range = sel.getRangeAt(0);
+          const existingMark = range.commonAncestorContainer.nodeType === 1
+            ? range.commonAncestorContainer.closest('mark.pill-hl')
+            : range.commonAncestorContainer.parentElement?.closest('mark.pill-hl');
+          if (existingMark && editorEl.contains(existingMark)) {
+            existingMark.setAttribute('data-hl-color', color);
+            existingMark.style.backgroundColor = color;
+            saveEditorHtml();
+            return;
+          }
+          const mark = document.createElement('mark');
+          mark.className = 'pill-hl';
+          mark.setAttribute('data-hl-color', color);
+          mark.style.backgroundColor = color;
+          try { range.surroundContents(mark); } catch (_) { mark.appendChild(range.extractContents()); range.insertNode(mark); }
+          sel.removeAllRanges();
+          saveEditorHtml();
+        };
+
+        document.getElementById('fmtHighlightBtn').addEventListener('click', () => { applyHighlightSelection(state.previewHighlightColor); hlPop.classList.add('hidden'); });
         main.querySelectorAll('[data-text-color]').forEach(btn => btn.addEventListener('click', () => {
           state.previewTextColor = btn.getAttribute('data-text-color');
+          editorEl.style.color = state.previewTextColor;
+          tcPop.classList.add('hidden');
           saveState(false); renderAll();
         }));
-        document.getElementById('customTextColor').addEventListener('input', (e) => {
-          state.previewTextColor = e.target.value; saveState(false); syncRender();
+        document.getElementById('toggleCustomTextColor').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const panel = document.getElementById('customTextColorPanel');
+          if (!panel) return;
+          const willOpen = panel.classList.contains('hidden');
+          panel.classList.toggle('hidden');
+          if (willOpen) {
+            mountSleekColorPicker(panel, state.previewTextColor || '#1D1D1F', (hex) => {
+              state.previewTextColor = hex;
+              editorEl.style.color = hex;
+              const triggerA = document.querySelector('#textColorPopBtn span');
+              if (triggerA) { triggerA.style.color = hex; triggerA.style.borderBottomColor = hex; }
+              syncRender();
+            }, () => saveState(false));
+          }
         });
         main.querySelectorAll('[data-hl-color]').forEach(btn => btn.addEventListener('click', () => {
           state.previewHighlightColor = btn.getAttribute('data-hl-color');
-          saveState(false); renderAll();
+          applyHighlightSelection(state.previewHighlightColor);
+          hlPop.classList.add('hidden');
+          renderAll();
         }));
-        document.getElementById('customHlColor').addEventListener('input', (e) => {
-          state.previewHighlightColor = e.target.value; saveState(false); syncRender();
+        document.getElementById('toggleCustomHlColor').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const panel = document.getElementById('customHlColorPanel');
+          if (!panel) return;
+          const willOpen = panel.classList.contains('hidden');
+          panel.classList.toggle('hidden');
+          if (willOpen) {
+            mountSleekColorPicker(panel, state.previewHighlightColor || '#FEF08A', (hex) => {
+              state.previewHighlightColor = hex;
+              const triggerDot = document.querySelector('#hlColorPopBtn span');
+              if (triggerDot) triggerDot.style.background = hex;
+              syncRender();
+            }, () => saveState(false));
+          }
         });
 
-        // Variation & Mode Controls
-        document.getElementById('modeSimBtn').addEventListener('click', () => { state.previewMode = 'editor_simulated'; renderAll(); });
-        document.getElementById('modeRealBtn').addEventListener('click', () => { state.previewMode = 'real_ttf'; renderAll(); });
-        document.getElementById('varTabThai').addEventListener('click', () => { state.varScriptTab = 'thai'; renderAll(); });
-        document.getElementById('varTabEng').addEventListener('click', () => { state.varScriptTab = 'english'; renderAll(); });
-        document.getElementById('varRandomBtn').addEventListener('click', () => {
-          state.variation.seed = Math.floor(Math.random() * 90000000) + 10000000;
-          saveState(false); syncRender();
-        });
-        document.getElementById('varResetBtn').addEventListener('click', () => {
-          state.variation[state.varScriptTab] = { intensity: 0, sizeVariation: 0, slantAngle: 0, charSpacing: 0, wordSpacing: 0 };
-          saveState(true); renderAll();
-        });
-        document.getElementById('pvSizeSlider').addEventListener('input', (e) => {
-          state.previewSize = Number(e.target.value);
-          document.getElementById('pvSizeVal').textContent = state.previewSize;
-          saveState(false); syncRender();
-        });
-        const bindVar = (id, key, valId, suffix) => {
-          document.getElementById(id).addEventListener('input', (e) => {
-            const v = Number(e.target.value);
-            state.variation[state.varScriptTab][key] = v;
-            document.getElementById(valId).textContent = v + suffix;
-            if (key === 'slantAngle') getActiveProject().slantAngle = v;
-            saveState(false); syncRender();
-          });
+        // Click-to-Place Textbox Mode (click '+ Textbox', then click anywhere on the paper/PDF to place & type)
+        const addTbBtn = document.getElementById('addTextboxBtn');
+        const paperStage = document.getElementById('paperStage');
+        const updatePlacementUi = () => {
+          if (addTbBtn) {
+            addTbBtn.classList.toggle('bg-[#1D1D1F]', isPlacingTextbox);
+            addTbBtn.classList.toggle('text-white', isPlacingTextbox);
+            addTbBtn.classList.toggle('border-[#1D1D1F]', isPlacingTextbox);
+            addTbBtn.classList.toggle('bg-white', !isPlacingTextbox);
+            addTbBtn.classList.toggle('border-[#E5E5EA]', !isPlacingTextbox);
+            const labelSpan = addTbBtn.querySelector('span');
+            if (labelSpan) {
+              labelSpan.textContent = isPlacingTextbox
+                ? (state.lang === 'th' ? 'คลิกบนกระดาษเพื่อวาง' : 'Click paper to place')
+                : '+ Textbox';
+            }
+          }
+          if (paperStage) {
+            paperStage.classList.toggle('cursor-crosshair', isPlacingTextbox);
+            paperStage.classList.toggle('ring-2', isPlacingTextbox);
+            paperStage.classList.toggle('ring-[#1D1D1F]/25', isPlacingTextbox);
+          }
         };
-        bindVar('vIntSlider', 'intensity', 'vIntVal', '%');
-        bindVar('vSizeSlider', 'sizeVariation', 'vSizeVal', '%');
-        bindVar('vSlantSlider', 'slantAngle', 'vSlantVal', '°');
-        bindVar('vCharSlider', 'charSpacing', 'vCharVal', '%');
-        bindVar('vWordSlider', 'wordSpacing', 'vWordVal', '%');
+        updatePlacementUi();
 
-        main.querySelectorAll('[data-mix-proj]').forEach(chk => chk.addEventListener('change', (e) => {
-          const pid = chk.getAttribute('data-mix-proj');
-          const set = new Set(Array.isArray(state.mixProjectIds) ? state.mixProjectIds : []);
-          if (e.target.checked) set.add(pid); else set.delete(pid);
-          state.mixProjectIds = Array.from(set);
-          saveState(true); renderAll();
-        }));
+        if (addTbBtn) {
+          addTbBtn.addEventListener('click', () => {
+            isPlacingTextbox = !isPlacingTextbox;
+            updatePlacementUi();
+          });
+        }
 
-        const dlSpec = document.getElementById('downloadSpecimenBtn');
-        if (dlSpec) dlSpec.addEventListener('click', () => {
+        if (paperStage) {
+          paperStage.addEventListener('click', (e) => {
+            if (!isPlacingTextbox) return;
+            const cv = document.getElementById('thaiPreviewCanvas');
+            if (!cv) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = cv.getBoundingClientRect();
+            const xRatio = Math.max(0.02, Math.min(0.84, (e.clientX - rect.left) / Math.max(1, rect.width)));
+            const yRatio = Math.max(0.02, Math.min(0.92, (e.clientY - rect.top - 14) / Math.max(1, rect.height)));
+            const tb = {
+              id: 'tb_' + Date.now(),
+              page: loadedPdfDoc ? loadedPdfPageNum : 1,
+              xRatio,
+              yRatio,
+              text: '',
+              fontSize: state.lastTextboxFontSize || 28,
+              color: state.previewTextColor
+            };
+            isPlacingTextbox = false;
+            updatePlacementUi();
+            state.textboxes = [...(state.textboxes || []), tb];
+            activeEditingTextboxId = tb.id;
+            saveState(true);
+            syncRender();
+            const newInput = overlayLayer.querySelector(`[data-tb-input="${tb.id}"]`);
+            if (newInput) newInput.focus();
+          }, true);
+        }
+
+        const onEscCancelPlacement = (e) => {
+          if (e.key === 'Escape' && isPlacingTextbox) {
+            isPlacingTextbox = false;
+            updatePlacementUi();
+          }
+        };
+        document.addEventListener('keydown', onEscCancelPlacement);
+
+        // Floating Selection Popover when highlighting text in editor
+        const selPop = document.getElementById('selectionPopup');
+        const popTextRow = document.getElementById('popTextColRow');
+        const popHlRow = document.getElementById('popHlColRow');
+
+        if (selPop && popTextRow && popHlRow) {
+          popTextRow.innerHTML = PALETTE_TEXT_COLORS.map(c => `<button type="button" data-pop-tc="${c.hex}" title="${c.name}" class="w-5 h-5 rounded-full border border-black/10" style="background:${c.hex};"></button>`).join('');
+          popHlRow.innerHTML = PALETTE_HL_COLORS.map(c => `<button type="button" data-pop-hc="${c.hex}" title="${c.name}" class="w-5 h-5 rounded-full border border-black/10" style="background:${c.hex};"></button>`).join('');
+
+          const hideSelPop = () => {
+            selPop.classList.add('hidden');
+            popTextRow.classList.add('hidden');
+            popHlRow.classList.add('hidden');
+          };
+
+          const updateSelPopPosition = () => {
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || sel.isCollapsed || !editorEl.contains(sel.anchorNode)) {
+              hideSelPop();
+              return;
+            }
+            const rect = sel.getRangeAt(0).getBoundingClientRect();
+            if (!rect || (rect.width === 0 && rect.height === 0)) { hideSelPop(); return; }
+            selPop.classList.remove('hidden');
+            const popW = selPop.offsetWidth || 220;
+            const left = Math.max(12, Math.min(window.innerWidth - popW - 12, rect.left + rect.width / 2 - popW / 2));
+            const top = Math.max(12, rect.top - (selPop.offsetHeight || 44) - 10);
+            selPop.style.left = Math.round(left) + 'px';
+            selPop.style.top = Math.round(top) + 'px';
+          };
+
+          editorEl.addEventListener('mouseup', () => setTimeout(updateSelPopPosition, 10));
+          editorEl.addEventListener('keyup', () => setTimeout(updateSelPopPosition, 10));
+
+          // Prevent mousedown on popup from clearing editor text selection!
+          selPop.onmousedown = (e) => e.preventDefault();
+          document.getElementById('popBulletBtn').onclick = () => { document.execCommand('insertUnorderedList'); saveEditorHtml(); hideSelPop(); };
+          document.getElementById('popNumberBtn').onclick = () => { document.execCommand('insertOrderedList'); saveEditorHtml(); hideSelPop(); };
+          document.getElementById('popTextColToggle').onclick = () => { popHlRow.classList.add('hidden'); popTextRow.classList.toggle('hidden'); };
+          document.getElementById('popHlColToggle').onclick = () => { popTextRow.classList.add('hidden'); popHlRow.classList.toggle('hidden'); };
+          document.getElementById('popClearHlBtn').onclick = () => {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount) {
+              const anc = sel.getRangeAt(0).commonAncestorContainer;
+              const mark = anc.nodeType === 1 ? anc.closest('mark.pill-hl') : anc.parentElement?.closest('mark.pill-hl');
+              if (mark && editorEl.contains(mark)) {
+                const parent = mark.parentNode;
+                while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+                parent.removeChild(mark);
+                saveEditorHtml();
+              }
+            }
+            hideSelPop();
+          };
+          popTextRow.querySelectorAll('[data-pop-tc]').forEach(b => b.onclick = () => {
+            state.previewTextColor = b.getAttribute('data-pop-tc');
+            editorEl.style.color = state.previewTextColor;
+            saveState(false); syncRender(); hideSelPop();
+          });
+          popHlRow.querySelectorAll('[data-pop-hc]').forEach(b => b.onclick = () => {
+            state.previewHighlightColor = b.getAttribute('data-pop-hc');
+            applyHighlightSelection(state.previewHighlightColor);
+            hideSelPop();
+          });
+        }
+
+        // Import PDF for Form Filling
+        document.getElementById('importPdfInput').addEventListener('change', async (e) => {
+          const file = e.target.files[0]; if (!file) return;
+          if (!window.pdfjsLib) {
+            showToast('PDF.js ยังโหลดไม่เสร็จ กรุณาลองใหม่');
+            return;
+          }
+          try {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            const buf = await file.arrayBuffer();
+            loadedPdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+            loadedPdfName = file.name;
+            loadedPdfPageNum = 1;
+            loadedPdfPageCount = loadedPdfDoc.numPages;
+            state.a4PreviewMode = true;
+            await renderPdfPageToCanvas(1);
+            renderAll();
+            showToast(state.lang === 'th' ? `นำเข้า ${file.name} แล้ว กด "+ Textbox" เพื่อเขียนทับแบบฟอร์ม` : `Loaded ${file.name}. Click "+ Textbox" to fill.`);
+          } catch (_) {
+            showToast(state.lang === 'th' ? 'ไม่สามารถเปิดไฟล์ PDF นี้ได้' : 'Could not open PDF');
+          }
+        });
+
+        const clearPdfBtn = document.getElementById('clearPdfBtn');
+        if (clearPdfBtn) clearPdfBtn.addEventListener('click', () => {
+          loadedPdfDoc = null; loadedPdfBgCanvas = null; loadedPdfName = ''; loadedPdfPageCount = 0;
+          renderAll();
+        });
+        const pdfPrev = document.getElementById('pdfPrevBtn');
+        if (pdfPrev) pdfPrev.addEventListener('click', async () => {
+          if (loadedPdfPageNum > 1) { loadedPdfPageNum--; await renderPdfPageToCanvas(loadedPdfPageNum); renderAll(); }
+        });
+        const pdfNext = document.getElementById('pdfNextBtn');
+        if (pdfNext) pdfNext.addEventListener('click', async () => {
+          if (loadedPdfPageNum < loadedPdfPageCount) { loadedPdfPageNum++; await renderPdfPageToCanvas(loadedPdfPageNum); renderAll(); }
+        });
+
+        document.getElementById('openVarModalBtn').addEventListener('click', () => openVariationModal(syncRender));
+        const a4Btn = document.getElementById('toggleA4PreviewBtn');
+        if (a4Btn) a4Btn.addEventListener('click', () => { state.a4PreviewMode = !state.a4PreviewMode; renderAll(); });
+        document.getElementById('downloadSpecimenBtn').addEventListener('click', () => {
           const cv = document.getElementById('thaiPreviewCanvas');
           if (!cv) return;
-          const a = document.createElement('a'); a.download = `${getActiveProject().familyName || 'LineLux'}-preview.png`; a.href = cv.toDataURL('image/png'); a.click();
-        });
-
-        const ttfUpload = document.getElementById('loadLocalTtfInput');
-        if (ttfUpload) ttfUpload.addEventListener('change', async (e) => {
-          const file = e.target.files[0]; if (!file) return;
-          try {
-            const buf = await file.arrayBuffer();
-            const fam = 'LineLuxUploaded_' + Date.now();
-            const face = new FontFace(fam, buf);
-            await face.load(); document.fonts.add(face);
-            state.customLoadedFontFamily = fam; state.customLoadedFontName = file.name;
-            renderAll(); showToast(`Loaded ${file.name}`);
-          } catch (_) { showToast('Could not load font file'); }
-        });
-      }
-
-      // --- 5. Export ---
-      function renderExport(main) {
-        const proj = getActiveProject();
-        const drawn = Object.values(proj.glyphs).filter(g => getValidInstances(g).length > 0);
-        main.innerHTML = `
-          <div class="max-w-3xl mx-auto space-y-5">
-            <h1 class="text-2xl font-semibold tracking-tight">${state.lang === 'th' ? 'ส่งออกฟอนต์ (.TTF)' : 'Export (.TTF)'}</h1>
-            <div class="bg-white rounded-2xl border border-[#E5E5EA] p-5 space-y-4">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <label class="space-y-1"><span class="text-[#6E6E73]">Font Family Name</span><input id="expFamily" type="text" value="${proj.familyName}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Style (Subfamily)</span><input id="expStyle" type="text" value="${proj.styleName}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Designer</span><input id="expDesigner" type="text" value="${proj.designer}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
-                <label class="space-y-1"><span class="text-[#6E6E73]">Version</span><input id="expVersion" type="text" value="${proj.version}" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7] text-sm" /></label>
-              </div>
-              <div class="text-xs text-[#6E6E73]">${state.lang === 'th' ? `อักขระที่วาดแล้ว ${drawn.length}/${CHARACTER_SET.length} ตัว · Geometric Slant ${proj.slantAngle || 0}°` : `Drawn glyphs: ${drawn.length}/${CHARACTER_SET.length} · Slant ${proj.slantAngle || 0}°`}</div>
-              <div class="flex flex-wrap gap-3">
-                <button id="exportJsonBtn" type="button" class="px-4 py-2.5 rounded-xl bg-[#1D1D1F] text-white text-xs font-medium hover:bg-black">${state.lang === 'th' ? 'ส่งออก JSON สำหรับ Backend .TTF' : 'Export FastAPI Payload (.JSON)'}</button>
-                <button id="downloadSampleTtfBtn" type="button" class="px-4 py-2.5 rounded-xl border border-[#D2D2D7] hover:bg-[#F5F5F7] text-xs font-medium">${state.lang === 'th' ? 'ดาวน์โหลดตัวอย่าง .TTF' : 'Download Sample .TTF'}</button>
-              </div>
-            </div>
-          </div>
-        `;
-        ['expFamily','expStyle','expDesigner','expVersion'].forEach(id => {
-          document.getElementById(id).addEventListener('input', () => {
-            proj.familyName = document.getElementById('expFamily').value;
-            proj.styleName = document.getElementById('expStyle').value;
-            proj.designer = document.getElementById('expDesigner').value;
-            proj.version = document.getElementById('expVersion').value;
-            saveState(false);
-          });
-        });
-        document.getElementById('exportJsonBtn').addEventListener('click', () => {
-          const payload = {
-            family_name: proj.familyName, style_name: proj.styleName, designer: proj.designer,
-            version: proj.version, slant_angle: proj.slantAngle || 0,
-            metrics: { units_per_em: 1000, ascender: 880, cap_height: 700, x_height: 500, baseline: 0, descender: -260, line_gap: 90 },
-            glyphs: drawn.map(g => {
-              const valid = getValidInstances(g);
-              return { codepoint: g.codepoint, character: g.character, category: g.category, canvas_width: g.canvasWidth, canvas_height: g.canvasHeight, strokes: valid[0].strokes, alternate_strokes: valid.slice(1).map(v => v.strokes), is_completed: true };
-            })
-          };
-          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${proj.familyName || 'LineLux'}-compile-payload.json`; a.click();
-          showToast(state.lang === 'th' ? 'ส่งออกไฟล์ JSON แล้ว' : 'Exported JSON payload');
-        });
-        document.getElementById('downloadSampleTtfBtn').addEventListener('click', () => {
-          const bin = atob(SAMPLE_TTF_B64); const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'font/ttf' })); a.download = 'LineLux-Sample-Regular.ttf'; a.click();
+          const a = document.createElement('a');
+          a.download = loadedPdfDoc ? `${loadedPdfName.replace(/\.pdf$/i, '')}-filled.png` : `${getActiveProject().familyName || 'LineLux'}-A4.png`;
+          a.href = cv.toDataURL('image/png');
+          a.click();
         });
       }
 
@@ -1913,19 +2839,21 @@
               </div>
             `}
 
-            <!-- Supabase Project Config -->
-            <div class="bg-white rounded-2xl border border-[#E5E5EA] p-5 space-y-3 text-xs">
-              <div class="font-semibold text-sm">${state.lang === 'th' ? 'ตั้งค่าการเชื่อมต่อ Supabase' : 'Supabase Connection'}</div>
-              <label class="block space-y-1">
-                <span class="text-[#6E6E73]">Supabase Project URL</span>
-                <input id="supaUrlInput" type="url" value="${supaConfig.url || ''}" placeholder="https://xxxx.supabase.co" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7]" />
-              </label>
-              <label class="block space-y-1">
-                <span class="text-[#6E6E73]">Supabase Anon Key (Public)</span>
-                <input id="supaKeyInput" type="password" value="${supaConfig.anonKey || ''}" placeholder="eyJhbGciOi..." class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7]" />
-              </label>
-              <button id="saveSupaCfgBtn" type="button" class="px-4 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium">${state.lang === 'th' ? 'บันทึกการตั้งค่า Supabase' : 'Save Supabase Config'}</button>
-            </div>
+            <!-- Supabase Project Config (Pre-configured, collapsible for advanced override) -->
+            <details class="bg-white rounded-2xl border border-[#E5E5EA] p-4 text-xs">
+              <summary class="cursor-pointer font-medium text-[#6E6E73] select-none">${state.lang === 'th' ? 'ตั้งค่าการเชื่อมต่อ Supabase (เชื่อมต่อแล้ว)' : 'Supabase Connection (Connected)'}</summary>
+              <div class="pt-3 space-y-3">
+                <label class="block space-y-1">
+                  <span class="text-[#6E6E73]">Supabase Project URL</span>
+                  <input id="supaUrlInput" type="url" value="${supaConfig.url || ''}" placeholder="https://xxxx.supabase.co" class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7]" />
+                </label>
+                <label class="block space-y-1">
+                  <span class="text-[#6E6E73]">Supabase Publishable / Anon Key</span>
+                  <input id="supaKeyInput" type="password" value="${supaConfig.anonKey || ''}" placeholder="sb_publishable_..." class="w-full px-3 py-2 rounded-xl border border-[#D2D2D7]" />
+                </label>
+                <button id="saveSupaCfgBtn" type="button" class="px-4 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium">${state.lang === 'th' ? 'บันทึกการตั้งค่า Supabase' : 'Save Supabase Config'}</button>
+              </div>
+            </details>
           </div>
         `;
 
@@ -1979,15 +2907,22 @@
         });
       }
 
-      // --- 7. Settings (All Secondary Controls Consolidated Here!) ---
+      // --- 7. Settings (Clean & Minimal) ---
       function renderSettings(main) {
         main.innerHTML = `
           <div class="max-w-2xl mx-auto space-y-5">
             <h1 class="text-2xl font-semibold tracking-tight">${state.lang === 'th' ? 'ตั้งค่า' : 'Settings'}</h1>
 
-            <!-- Writing & Apple Pencil -->
+            <!-- Writing & Input Protection -->
             <div class="bg-white rounded-2xl border border-[#E5E5EA] p-5 space-y-4 text-sm">
-              <div class="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">${state.lang === 'th' ? 'ปากกาและ Writing Studio' : 'Pen & Writing Studio'}</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">${state.lang === 'th' ? 'ทั่วไปและปากกา' : 'General & Pen'}</div>
+              <div class="flex items-center justify-between gap-4">
+                <span>${state.lang === 'th' ? 'ภาษา (Language)' : 'Language'}</span>
+                <div class="inline-flex rounded-xl bg-[#F5F5F7] p-0.5 text-xs">
+                  <button id="setLangTh" type="button" class="px-3 py-1 rounded-lg font-medium ${state.lang === 'th' ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}">ไทย</button>
+                  <button id="setLangEn" type="button" class="px-3 py-1 rounded-lg font-medium ${state.lang === 'en' ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}">English</button>
+                </div>
+              </div>
               <div class="flex items-center justify-between gap-4">
                 <span>${state.lang === 'th' ? 'โหมดป้องกันฝ่ามือ (iPad / Apple Pencil)' : 'Input Protection Mode'}</span>
                 <div class="inline-flex rounded-xl bg-[#F5F5F7] p-0.5 text-xs">
@@ -1996,16 +2931,6 @@
                 </div>
               </div>
               <label class="flex items-center justify-between gap-4"><span>${state.lang === 'th' ? 'ความสมูทของเส้น' : 'Stroke Smoothing'}: <strong id="setSmoothVal">${Math.round((state.smoothing || 0.45)*100)}%</strong></span><input id="setSmoothSlider" type="range" min="0.1" max="0.75" step="0.05" value="${state.smoothing || 0.45}" /></label>
-              <label class="flex items-center justify-between gap-4"><span>${state.lang === 'th' ? 'ขนาดช่องเขียนอักขระ' : 'Cell Size'}: <strong id="setCellVal">${state.cellWidth}px</strong></span><input id="setCellSlider" type="range" min="76" max="132" step="4" value="${state.cellWidth}" /></label>
-              <label class="flex items-center justify-between gap-4"><span>${state.lang === 'th' ? 'รองรับแรงกด Apple Pencil' : 'Apple Pencil Pressure'}</span><input id="setPressure" type="checkbox" ${state.pressureSensitive ? 'checked' : ''} /></label>
-              <div class="flex items-center justify-between gap-4">
-                <span>${state.lang === 'th' ? 'ตัวกรองอักขระในสตูดิโอ' : 'Studio Character Filter'}</span>
-                <div class="inline-flex rounded-xl bg-[#F5F5F7] p-0.5 text-xs">
-                  <button type="button" data-set-filter="all" class="px-2.5 py-1 rounded-lg ${state.filterMode === 'all' ? 'bg-white shadow-sm font-medium' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ทั้งหมด' : 'All'}</button>
-                  <button type="button" data-set-filter="todo" class="px-2.5 py-1 rounded-lg ${state.filterMode === 'todo' ? 'bg-white shadow-sm font-medium' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'ยังไม่เขียน' : 'Todo'}</button>
-                  <button type="button" data-set-filter="done" class="px-2.5 py-1 rounded-lg ${state.filterMode === 'done' ? 'bg-white shadow-sm font-medium' : 'text-[#6E6E73]'}">${state.lang === 'th' ? 'เขียนแล้ว' : 'Done'}</button>
-                </div>
-              </div>
             </div>
 
             <!-- Guides -->
@@ -2018,72 +2943,38 @@
               <label class="flex items-center justify-between"><span>Ascender: <strong id="setAscVal">${Math.round(state.guides.ascender*100)}%</strong></span><input id="setAscSlider" type="range" min="0.08" max="0.24" step="0.01" value="${state.guides.ascender}" /></label>
               <label class="flex items-center justify-between"><span>Descender: <strong id="setDescVal">${Math.round(state.guides.descender*100)}%</strong></span><input id="setDescSlider" type="range" min="0.84" max="0.96" step="0.01" value="${state.guides.descender}" /></label>
             </div>
-
-            <!-- Tools & Backup -->
-            <div class="bg-white rounded-2xl border border-[#E5E5EA] p-5 space-y-3 text-xs">
-              <div class="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">${state.lang === 'th' ? 'เครื่องมือและสำรองข้อมูล' : 'Utilities & Backup'}</div>
-              <div class="flex flex-wrap gap-2">
-                <button id="setSampleBtn" type="button" class="px-3.5 py-2 rounded-xl bg-[#F5F5F7] hover:bg-[#E5E5EA] font-medium">${state.lang === 'th' ? 'เติมลายมือตัวอย่าง 10 อักขระ' : 'Load 10 Sample Glyphs'}</button>
-                <label class="cursor-pointer px-3.5 py-2 rounded-xl border border-[#D2D2D7] hover:bg-[#F5F5F7] font-medium">
-                  ${state.lang === 'th' ? 'นำเข้าสำรอง (.JSON)' : 'Restore Backup (.JSON)'}
-                  <input id="setImportJson" type="file" accept=".json,application/json" class="hidden" />
-                </label>
-              </div>
-            </div>
           </div>
         `;
 
+        document.getElementById('setLangTh').addEventListener('click', () => { state.lang = 'th'; saveState(true); renderAll(); });
+        document.getElementById('setLangEn').addEventListener('click', () => { state.lang = 'en'; saveState(true); renderAll(); });
         document.getElementById('setModePencil').addEventListener('click', () => { state.inputMode = 'pencil_only'; saveState(true); renderAll(); });
         document.getElementById('setModeFinger').addEventListener('click', () => { state.inputMode = 'finger_drawing'; saveState(true); renderAll(); });
         document.getElementById('setSmoothSlider').addEventListener('input', (e) => { state.smoothing = Number(e.target.value); document.getElementById('setSmoothVal').textContent = Math.round(state.smoothing*100)+'%'; saveState(false); });
-        document.getElementById('setCellSlider').addEventListener('input', (e) => { state.cellWidth = Number(e.target.value); document.getElementById('setCellVal').textContent = state.cellWidth+'px'; saveState(false); });
-        document.getElementById('setPressure').addEventListener('change', (e) => { state.pressureSensitive = e.target.checked; saveState(true); });
-        main.querySelectorAll('[data-set-filter]').forEach(b => b.addEventListener('click', () => { state.filterMode = b.getAttribute('data-set-filter'); saveState(true); renderAll(); }));
         document.getElementById('setCenterGuide').addEventListener('change', (e) => { state.showCenterGuide = e.target.checked; saveState(true); });
         document.getElementById('setGhostChar').addEventListener('change', (e) => { state.showGhostChar = e.target.checked; saveState(true); });
         document.getElementById('setBaseSlider').addEventListener('input', (e) => { state.guides.baseline = Number(e.target.value); document.getElementById('setBaseVal').textContent = Math.round(state.guides.baseline*100)+'%'; saveState(false); });
         document.getElementById('setXSlider').addEventListener('input', (e) => { state.guides.xHeight = Number(e.target.value); document.getElementById('setXVal').textContent = Math.round(state.guides.xHeight*100)+'%'; saveState(false); });
         document.getElementById('setAscSlider').addEventListener('input', (e) => { state.guides.ascender = Number(e.target.value); document.getElementById('setAscVal').textContent = Math.round(state.guides.ascender*100)+'%'; saveState(false); });
         document.getElementById('setDescSlider').addEventListener('input', (e) => { state.guides.descender = Number(e.target.value); document.getElementById('setDescVal').textContent = Math.round(state.guides.descender*100)+'%'; saveState(false); });
-        document.getElementById('setSampleBtn').addEventListener('click', loadSampleGlyphs);
-        document.getElementById('setImportJson').addEventListener('change', (e) => {
-          const file = e.target.files[0]; if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            try {
-              const parsed = JSON.parse(reader.result);
-              const restored = createProject(parsed.family_name || parsed.name || 'Imported Font', parsed.family_name || parsed.familyName || 'LineLuxImported');
-              if (Array.isArray(parsed.glyphs)) {
-                parsed.glyphs.forEach(g => {
-                  const insts = [{ id: 'imp_' + g.codepoint, strokes: g.strokes || [], createdAt: new Date().toISOString() }];
-                  if (Array.isArray(g.alternate_strokes)) g.alternate_strokes.forEach((st, i) => insts.push({ id: `imp_${g.codepoint}_${i}`, strokes: st, createdAt: new Date().toISOString() }));
-                  restored.glyphs[g.codepoint] = { codepoint: g.codepoint, character: g.character, category: g.category || 'thai_consonants', canvasWidth: g.canvas_width || 96, canvasHeight: g.canvas_height || 120, strokes: insts[0].strokes, instances: insts, activeInstanceIdx: 0, isCompleted: true, updatedAt: new Date().toISOString() };
-                });
-              }
-              state.projects.unshift(restored); state.activeProjectId = restored.id; saveState(true); renderAll();
-              showToast(state.lang === 'th' ? 'นำเข้าไฟล์สำรองแล้ว' : 'Restored backup JSON');
-            } catch (_) { showToast('Invalid JSON file'); }
-          };
-          reader.readAsText(file);
-        });
       }
 
       function renderAll() {
         renderSidebar();
         const main = document.getElementById('mainContent');
         if (state.tab === 'dashboard') renderDashboard(main);
-        else if (state.tab === 'my-fonts') renderMyFonts(main);
-        else if (state.tab === 'studio') renderStudio(main);
+        else if (state.tab === 'my-fonts') {
+          if (state.librarySubView === 'studio') renderStudio(main);
+          else renderMyFonts(main);
+        }
         else if (state.tab === 'preview') renderPreview(main);
-        else if (state.tab === 'export') renderExport(main);
         else if (state.tab === 'login') renderLogin(main);
         else if (state.tab === 'settings') renderSettings(main);
         if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
       }
 
       function toggleLanguage() { state.lang = state.lang === 'th' ? 'en' : 'th'; saveState(true); renderAll(); }
-      document.getElementById('langToggleBtn').addEventListener('click', toggleLanguage);
-      document.getElementById('mobileLangBtn').addEventListener('click', toggleLanguage);
+      document.getElementById('mobileAuthBtn').addEventListener('click', () => { state.tab = 'login'; renderAll(); });
       document.getElementById('sidebarAuthBtn').addEventListener('click', () => { state.tab = 'login'; closeMobileSidebar(); renderAll(); });
       document.getElementById('mobileMenuBtn').addEventListener('click', openMobileSidebar);
       document.getElementById('closeSidebarBtn').addEventListener('click', closeMobileSidebar);
@@ -2108,6 +2999,7 @@
           if (idb.meta.guides) state.guides = { ...state.guides, ...idb.meta.guides };
           if (idb.meta.previewTextColor) state.previewTextColor = idb.meta.previewTextColor;
           if (idb.meta.previewHighlightColor) state.previewHighlightColor = idb.meta.previewHighlightColor;
+          if (idb.meta.previewHtml) state.previewHtml = idb.meta.previewHtml;
           if (Array.isArray(idb.meta.mixProjectIds)) state.mixProjectIds = idb.meta.mixProjectIds;
           if (idb.meta.activeProjectId && state.projects.some(p => p.id === idb.meta.activeProjectId)) state.activeProjectId = idb.meta.activeProjectId;
         }
@@ -2127,6 +3019,18 @@
           } catch (_) {}
         }
 
+        for (const p of state.projects) {
+          if (p.fontType === 'ttf' && p.ttfBase64 && p.ttfFamily) {
+            try {
+              const bin = atob(p.ttfBase64);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              const face = new FontFace(p.ttfFamily, bytes.buffer);
+              await face.load();
+              document.fonts.add(face);
+            } catch (_) {}
+          }
+        }
         renderAll();
       }
       bootstrapApp();
