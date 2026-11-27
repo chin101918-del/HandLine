@@ -2027,7 +2027,7 @@
         const dpr = window.devicePixelRatio || 1;
         const isA4 = Boolean(state.a4PreviewMode || canvas._forceA4);
         const parentW = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
-        const width = canvas._forceWidth || Math.max(280, Math.round(isA4 ? Math.min(parentW || 794, 794) : (parentW || canvas.clientWidth || 720)));
+        const width = canvas._forceWidth || Math.max(240, Math.floor(isA4 ? Math.min(parentW || 794, 794) : (parentW ? parentW - 2 : (canvas.clientWidth || 720))));
         const result = precomputedLayout || computePreviewLayout(text, proj, state.variation, fontSize, lineHeight, letterSpacing, state.guides, width, null, ctx, isA4);
         const pageBgForSize = canvas._pdfBgCanvas || loadedPdfBgCanvas;
         const a4Height = (pageBgForSize && loadedPdfDoc)
@@ -3657,7 +3657,7 @@
                 </div>
 
                 <!-- Centered Monochrome Editorial Hero -->
-                <div class="relative z-10 text-center max-w-3xl mx-auto px-2 my-auto py-10 sm:py-14 space-y-5">
+                <div class="relative z-10 text-center max-w-3xl mx-auto px-2 my-auto pt-16 sm:pt-24 pb-4 sm:pb-8 space-y-5">
                   <h1 class="hero-fade-1 hero-fluid-title font-bold tracking-[-0.03em] text-[#1D1D1F]">
                     ${state.lang === 'th' ? 'มีเอกลักษณ์ ด้วยลายลักษณ์' : 'Unique in Every Stroke'}
                   </h1>
@@ -3678,10 +3678,7 @@
 
               <!-- Pill Settings Bar: hidden at top of Landing Page, smoothly fades in when user scrolls down! -->
               <div id="landingPlaygroundSection" class="opacity-0 -translate-y-2 pointer-events-none transition-all duration-500 ease-out -mt-8 mb-1 relative z-20 max-w-[1440px] w-full mx-auto flex flex-wrap items-center justify-between gap-3 px-5 sm:px-8">
-                <div>
-                  <h2 class="text-sm font-semibold tracking-tight text-[#1D1D1F]">${state.lang === 'th' ? 'ทดลองพิมพ์ด้วยลายมือจริง' : 'Try Live Handwriting'}</h2>
-                  <p class="text-[11px] text-[#8E8E93]">${state.lang === 'th' ? 'พิมพ์ข้อความฝั่งซ้าย แล้วดูลายมือสุ่มสลับทีละตัวอักษรแบบเรียลไทม์' : 'Type on the left to watch live handwriting variation'}</p>
-                </div>
+                <h2 class="text-sm font-semibold tracking-tight text-[#1D1D1F]">${state.lang === 'th' ? 'ทดลองพิมพ์ด้วยลายมือจริง' : 'Try Live Handwriting'}</h2>
                 <div class="flex items-center gap-2">
                   <div class="relative" id="studioSizeWrap">
                     <div class="inline-flex items-center rounded-xl bg-white border border-[#E5E5EA] px-1 py-0.5 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.03)]" title="${state.lang === 'th' ? 'ขนาดตัวอักษร (10–100px)' : 'Font Size (10–100px)'}">
@@ -3895,7 +3892,7 @@
                     </div>
                   ` : ''}
                 </div>
-                <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin ${isPaperMode ? 'bg-[#EAEAEF] p-5 sm:p-8 flex flex-col items-center gap-6' : ''}">
+                <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin ${isPaperMode ? 'bg-[#EAEAEF] p-5 sm:p-8 flex flex-col items-center gap-6' : ''}">
                   ${loadedPdfDoc ? Array.from({ length: loadedPdfPageCount }, (_, idx) => {
                     const pNum = idx + 1;
                     return `
@@ -3909,7 +3906,7 @@
                     <div id="a4PagesStack" class="w-full flex flex-col items-center gap-6"></div>
                   ` : `
                     <div id="paperStage" class="relative w-full">
-                      <canvas id="thaiPreviewCanvas" class="block select-none" ${isGuest ? 'oncontextmenu="return false;"' : ''}></canvas>
+                      <canvas id="thaiPreviewCanvas" class="block w-full max-w-full select-none" ${isGuest ? 'oncontextmenu="return false;"' : ''}></canvas>
                       <!-- Interactive Draggable Textbox Handles Overlay -->
                       <div id="textboxOverlayLayer" data-tb-layer="1" class="absolute inset-0 pointer-events-none"></div>
                     </div>
