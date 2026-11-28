@@ -3741,15 +3741,19 @@
       function makeThumbFromCanvas(srcCanvas) {
         if (!srcCanvas || !srcCanvas.width || !srcCanvas.height) return '';
         try {
-          const tw = 360;
+          const tw = Math.min(840, Math.max(720, srcCanvas.width));
           const th = Math.round(tw * (srcCanvas.height / srcCanvas.width));
           const c = document.createElement('canvas');
-          c.width = tw; c.height = Math.min(480, th);
+          c.width = tw;
+          c.height = Math.min(Math.round(tw * 0.85), th);
           const cx = c.getContext('2d');
           cx.fillStyle = '#FFFFFF';
           cx.fillRect(0, 0, c.width, c.height);
+          cx.imageSmoothingEnabled = true;
+          cx.imageSmoothingQuality = 'high';
           cx.drawImage(srcCanvas, 0, 0, tw, th);
-          return c.toDataURL('image/jpeg', 0.72);
+          const webp = c.toDataURL('image/webp', 0.90);
+          return webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/jpeg', 0.90);
         } catch (_) { return ''; }
       }
 
@@ -3785,14 +3789,15 @@
         return doc;
       }
 
-      function createNewBlankDocumentTab() {
+      function createNewBlankDocumentTab(customTitle = '') {
         autoSaveActiveDocument(true);
         loadedPdfDoc = null; loadedPdfBgCanvas = null; loadedPdfPageCanvases = {}; loadedPdfBytes = null; loadedPdfName = ''; loadedPdfPageCount = 0;
         const now = new Date().toISOString();
         const idx = (state.documents || []).filter(d => d.type !== 'pdf').length + 1;
+        const cleanTitle = String(customTitle || '').trim();
         const doc = {
           id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
-          title: state.lang === 'th' ? `กระดาษเปล่า ${idx}` : `Blank Page ${idx}`,
+          title: cleanTitle || (state.lang === 'th' ? `กระดาษเปล่า ${idx}` : `Blank Page ${idx}`),
           type: 'paper',
           previewHtml: '',
           previewSize: state.previewSize || 22,
@@ -3816,7 +3821,7 @@
         saveState(true);
       }
 
-      async function importPdfFileIntoNewTab(file) {
+      async function importPdfFileIntoNewTab(file, customTitle = '') {
         if (!file) return;
         if (!window.pdfjsLib) {
           showToast('PDF.js ยังโหลดไม่เสร็จ กรุณาลองใหม่');
@@ -3836,7 +3841,7 @@
           const now = new Date().toISOString();
           const pdfDocRec = {
             id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
-            title: file.name.replace(/\.pdf$/i, ''),
+            title: String(customTitle || '').trim() || file.name.replace(/\.pdf$/i, ''),
             type: 'pdf',
             previewHtml: '',
             previewSize: state.previewSize || 22,
@@ -3867,15 +3872,21 @@
         const overlay = document.getElementById('modalOverlay');
         const card = document.getElementById('modalCard');
         setModalMaxWidth('max-w-2xl');
+        const nextIdx = (state.documents || []).filter(d => d.type !== 'pdf').length + 1;
+        const defaultTitlePlaceholder = state.lang === 'th' ? `กระดาษเปล่า ${nextIdx}` : `Blank Page ${nextIdx}`;
         card.innerHTML = `
-          <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center justify-between mb-4">
             <div>
               <h3 class="text-lg font-semibold text-[#1D1D1F]">${state.lang === 'th' ? 'เพิ่มเอกสารใหม่' : 'New Document'}</h3>
-              <p class="text-xs text-[#6E6E73] mt-0.5">${state.lang === 'th' ? 'เลือกรูปแบบกระดาษที่ต้องการ หรืออัปโหลดไฟล์ PDF ด้านล่าง' : 'Choose a paper template or upload a PDF file below'}</p>
+              <p class="text-xs text-[#6E6E73] mt-0.5">${state.lang === 'th' ? 'ตั้งชื่อเอกสาร เลือกรูปแบบกระดาษ หรืออัปโหลดไฟล์ PDF ด้านล่าง' : 'Name your document, choose a paper template, or upload a PDF below'}</p>
             </div>
             <button id="closeNewDocModalBtn" type="button" class="p-1.5 rounded-lg hover:bg-[#F2F2F7]"><i data-lucide="x" class="w-4 h-4"></i></button>
           </div>
           <div class="space-y-4 text-left">
+            <div class="space-y-1.5">
+              <label for="newDocTitleInput" class="block text-xs font-medium text-[#424245]">${state.lang === 'th' ? 'ชื่อเอกสาร (ไม่บังคับ)' : 'Document Name (Optional)'}</label>
+              <input id="newDocTitleInput" type="text" placeholder="${defaultTitlePlaceholder}" class="w-full px-3.5 py-2.5 rounded-xl border border-[#E5E5EA] focus:border-[#1D1D1F] focus:outline-none text-sm text-[#1D1D1F] bg-white transition-colors" />
+            </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
               ${PAPER_TEMPLATES.map(pt => `
                 <button type="button" data-new-paper-style="${pt.id}" class="group p-3 rounded-2xl border border-[#E5E5EA] hover:border-[#1D1D1F] hover:shadow-sm bg-white text-left transition-all space-y-2.5">
@@ -3905,18 +3916,21 @@
         if (window.lucide) window.lucide.createIcons();
         const close = () => overlay.classList.add('hidden');
         document.getElementById('closeNewDocModalBtn').addEventListener('click', close);
+        const titleInputEl = document.getElementById('newDocTitleInput');
         card.querySelectorAll('[data-new-paper-style]').forEach(btn => btn.addEventListener('click', () => {
+          const customName = titleInputEl ? titleInputEl.value.trim() : '';
           state.paperStyle = btn.getAttribute('data-new-paper-style') || 'blank';
           close();
-          createNewBlankDocumentTab();
+          createNewBlankDocumentTab(customName);
           state.tab = 'preview';
           renderAll();
         }));
         document.getElementById('modalImportPdfInput').addEventListener('change', async (e) => {
           const f = e.target.files[0];
           if (!f) return;
+          const customName = titleInputEl ? titleInputEl.value.trim() : '';
           close();
-          await importPdfFileIntoNewTab(f);
+          await importPdfFileIntoNewTab(f, customName);
         });
       }
 
