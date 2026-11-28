@@ -5733,19 +5733,31 @@
         main.querySelectorAll('[data-doc-tab-close]').forEach(closeBtn => closeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           const id = closeBtn.getAttribute('data-doc-tab-close');
+          const wasActive = state.activeDocumentId === id;
+          // 1. Save active document BEFORE removing its tab so all typed content is preserved in Library!
+          if (wasActive) {
+            autoSaveActiveDocument(true);
+          }
           const prevOpen = Array.isArray(state.openDocIds) ? [...state.openDocIds] : [];
           const closedIdx = prevOpen.indexOf(id);
           const closingDoc = (state.documents || []).find(d => d.id === id);
+          // 2. Close ONLY the tab; keep all non-empty documents safely saved in state.documents (Library)
           state.openDocIds = prevOpen.filter(x => x !== id);
           if (closingDoc && isDocumentEmpty(closingDoc)) {
             state.documents = (state.documents || []).filter(d => d.id !== id);
           }
-          if (state.activeDocumentId === id) {
+          // 3. Switch to the tab on the left without re-adding the closed tab!
+          if (wasActive) {
+            state.activeDocumentId = null;
             const leftIdx = Math.max(0, closedIdx - 1);
             const nextId = state.openDocIds[leftIdx] || state.openDocIds[0];
-            if (nextId) { openDocumentInStudio(nextId); return; }
+            if (nextId) {
+              openDocumentInStudio(nextId);
+              return;
+            }
           }
-          saveState(true); renderAll();
+          saveState(true);
+          renderAll();
         }));
         const newTabBtn = document.getElementById('studioNewTabBtn');
         if (newTabBtn) newTabBtn.addEventListener('click', openNewDocumentModal);
