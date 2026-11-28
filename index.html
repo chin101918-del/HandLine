@@ -154,6 +154,81 @@
         pointer-events: none;
       }
     </style>
+      <style>
+      @keyframes ctaPenWriteLoop {
+        0%, 14%   { transform: translate(0, 0) rotate(0deg); }
+        26%       { transform: translate(1.5px, 1px) rotate(-10deg); }
+        40%       { transform: translate(4px, -0.5px) rotate(-4deg); }
+        52%       { transform: translate(5.5px, 0.5px) rotate(-12deg); }
+        66%, 100% { transform: translate(0, 0) rotate(0deg); }
+      }
+      @keyframes ctaInkTrailLoop {
+        0%, 14%   { stroke-dashoffset: 18; opacity: 0; }
+        22%       { stroke-dashoffset: 16; opacity: 0.75; }
+        52%       { stroke-dashoffset: 0; opacity: 0.75; }
+        68%       { stroke-dashoffset: 0; opacity: 0; }
+        100%      { stroke-dashoffset: 18; opacity: 0; }
+      }
+      .cta-pen-nib {
+        transform-origin: 4px 16px;
+        animation: ctaPenWriteLoop 3.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      }
+      .cta-ink-trail {
+        stroke-dasharray: 18;
+        stroke-dashoffset: 18;
+        animation: ctaInkTrailLoop 3.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      }
+      .cta-hero-btn:hover .cta-pen-nib {
+        animation: none;
+        transform: translate(1.5px, -0.5px) rotate(-12deg);
+        transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .cta-hero-btn:hover .cta-ink-trail {
+        animation: none;
+        stroke-dashoffset: 0;
+        opacity: 0.95;
+        transition: stroke-dashoffset 0.3s ease, opacity 0.25s ease;
+      }
+      .cta-arrow-shaft {
+        stroke-dasharray: 18;
+        stroke-dashoffset: 18;
+        transition: stroke-dashoffset 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+        opacity: 0.35;
+      }
+      .cta-arrow-head {
+        stroke-dasharray: 14;
+        stroke-dashoffset: 14;
+        transition: stroke-dashoffset 0.26s cubic-bezier(0.22, 1, 0.36, 1) 0.16s, opacity 0.2s ease 0.12s;
+        opacity: 0.35;
+      }
+      .cta-arrow-wrap {
+        width: 0;
+        opacity: 0;
+        margin-left: 0;
+        overflow: visible;
+        transition: width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, margin-left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .cta-hero-btn:hover .cta-arrow-wrap,
+      .cta-hero-btn:focus-visible .cta-arrow-wrap {
+        width: 18px;
+        opacity: 1;
+        margin-left: 4px;
+      }
+      .cta-hero-btn:hover .cta-arrow-shaft,
+      .cta-hero-btn:focus-visible .cta-arrow-shaft {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+      .cta-hero-btn:hover .cta-arrow-head,
+      .cta-hero-btn:focus-visible .cta-arrow-head {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .cta-pen-nib, .cta-ink-trail { animation: none; }
+        .cta-ink-trail { stroke-dashoffset: 0; opacity: 0.55; }
+      }
+    </style>
   </head>
 <body class="min-h-[100dvh] w-full flex flex-col lg:flex-row bg-[#F5F5F7] text-[#1D1D1F]">
   <!-- Mobile Header -->
@@ -4045,8 +4120,21 @@
                       : 'Turn every keystroke into <span class="relative inline-block text-[#1D1D1F] font-medium italic px-1">the trace of a pen<svg class="absolute left-0 -bottom-2.5 w-full h-3 overflow-visible" viewBox="0 0 240 14" fill="none"><path class="hero-underline-path" d="M3 10 Q 115 2, 237 7" stroke="#1D1D1F" stroke-width="2.4" stroke-linecap="round"/></svg></span>'}
                   </p>
                   <div class="hero-fade-3 pt-3 flex items-center justify-center">
-                    <button id="heroStartCtaBtn" type="button" class="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#1D1D1F] hover:bg-black text-white text-sm font-medium shadow-[0_6px_20px_rgba(0,0,0,0.14)] transition-all">
+                    <button id="heroStartCtaBtn" type="button" class="cta-hero-btn group inline-flex items-center gap-2.5 px-6 py-3 rounded-full bg-[#1D1D1F] hover:bg-black text-white text-sm font-medium shadow-[0_6px_20px_rgba(0,0,0,0.14)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.22)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300">
+                      <svg class="w-4 h-4 shrink-0 overflow-visible" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path class="cta-ink-trail" d="M3.5 17.2 Q 7.5 15.8, 11.5 17 Q 14.5 17.6, 17 16.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <g class="cta-pen-nib">
+                          <path d="M13.6 2.8 L16.6 5.8 L7.4 15 L3.6 15.8 L4.4 12 L13.6 2.8 Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                          <path d="M11.6 4.8 L14.6 7.8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+                        </g>
+                      </svg>
                       <span>${state.lang === 'th' ? 'เริ่มสร้างลายมือของคุณ' : 'Start creating your handwriting'}</span>
+                      <span class="cta-arrow-wrap inline-flex items-center justify-center">
+                        <svg class="w-4 h-4 shrink-0 overflow-visible" viewBox="0 0 18 14" fill="none" aria-hidden="true">
+                          <path class="cta-arrow-shaft" d="M1.5 7.4 Q 7.5 6.4, 15.2 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                          <path class="cta-arrow-head" d="M11.2 2.8 Q 13.5 5.2, 15.8 7 Q 13.4 9, 11 11.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </span>
                     </button>
                   </div>
                 </div>
